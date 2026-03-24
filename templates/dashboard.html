@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Dashboard | VishHunter{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block page_subtitle %}Overview of vishing detection activities{% endblock %}
+{% block content %}
+<div class="row g-4 mb-4">
+  <div class="col-md-6 col-xl-3">
+    <div class="panel-card stat-card">
+      <div class="text-secondary small">Total Cases</div>
+      <div class="display-value">{{ metrics.total_cases }}</div>
+      <div class="text-secondary small">Unified case management records</div>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <div class="panel-card stat-card">
+      <div class="text-secondary small">High Risk Cases</div>
+      <div class="display-value text-danger-emphasis">{{ metrics.high_risk_cases }}</div>
+      <div class="text-secondary small">Fraud-priority cases for escalation</div>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <div class="panel-card stat-card">
+      <div class="text-secondary small">Recent Analyses</div>
+      <div class="display-value">{{ metrics.recent_analyses }}</div>
+      <div class="text-secondary small">Processed in the last 24 hours</div>
+    </div>
+  </div>
+  <div class="col-md-6 col-xl-3">
+    <div class="panel-card stat-card">
+      <div class="text-secondary small">Avg Recording Length</div>
+      <div class="display-value">{{ metrics.avg_recording_length }}</div>
+      <div class="text-secondary small">Across stored audio evidence</div>
+    </div>
+  </div>
+</div>
+<div class="row g-4 mb-4">
+  <div class="col-lg-6">
+    <div class="panel-card">
+      <div class="panel-header">
+        <div>
+          <h2>Risk Distribution</h2>
+          <p>Current case classification breakdown</p>
+        </div>
+      </div>
+      <canvas id="riskChart" height="260"></canvas>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="panel-card">
+      <div class="panel-header">
+        <div>
+          <h2>Weekly Trend</h2>
+          <p>Cases analyzed over the past 7 days</p>
+        </div>
+      </div>
+      <canvas id="trendChart" height="260"></canvas>
+    </div>
+  </div>
+</div>
+<div class="panel-card">
+  <div class="panel-header">
+    <div>
+      <h2>Recent Cases</h2>
+      <p>Latest analyzed voice calls</p>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-dark table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Case ID</th>
+          <th>Title</th>
+          <th>Risk Level</th>
+          <th>Confidence</th>
+          <th>Review Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for case in recent_cases %}
+        <tr>
+          <td>{{ case.case_number }}</td>
+          <td>{{ case.title }}</td>
+          <td><span class="risk-pill risk-{{ case.risk_level }}">{{ case.risk_level|upper }}</span></td>
+          <td>{{ (case.confidence_score * 100)|round|int }}%</td>
+          <td>{{ case.review_status.replace('_', ' ').title() }}</td>
+          <td class="text-end"><a class="btn btn-sm btn-outline-light" href="/cases/{{ case.id }}">View Details</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  window.vishhunterCharts = {
+    riskDistribution: {{ [metrics.distribution.low, metrics.distribution.medium, metrics.distribution.high] | tojson }},
+    weeklyTrendLabels: {{ trend_labels | tojson }},
+    weeklyTrendValues: {{ trend_values | tojson }}
+  }
+</script>
+{% endblock %}

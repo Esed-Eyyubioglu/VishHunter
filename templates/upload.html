@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Upload & Analyze | VishHunter{% endblock %}
+{% block page_title %}Upload & Analyze{% endblock %}
+{% block page_subtitle %}Upload recorded voice calls for real transcription and hybrid analysis{% endblock %}
+{% block content %}
+<div class="row g-4">
+  <div class="col-xl-8">
+    <div class="panel-card">
+      <div class="panel-header">
+        <div>
+          <h2>Upload Audio Recording</h2>
+          <p>Accepted formats: WAV or MP3. The system transcribes the recording and scores it with the hybrid thesis pipeline.</p>
+        </div>
+      </div>
+      {% if error %}
+      <div class="alert alert-danger">{{ error }}</div>
+      {% endif %}
+      {% if not model_status.artifacts_present %}
+      <div class="alert alert-info">Model artifacts are not built yet. The first upload will trigger training from the configured public datasets.</div>
+      {% endif %}
+      <form method="post" action="/upload" enctype="multipart/form-data" class="d-grid gap-4">
+        <div class="upload-zone">
+          <label class="form-label">Audio file</label>
+          <input class="form-control form-control-dark" type="file" name="audio_file" accept=".wav,.mp3,audio/*" required />
+        </div>
+        <div class="d-flex gap-2 justify-content-end">
+          <a href="/dashboard" class="btn btn-outline-light">Cancel</a>
+          <button class="btn btn-primary btn-vish" type="submit">Start Analysis</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div class="col-xl-4">
+    <div class="panel-card">
+      <div class="panel-header">
+        <div>
+          <h2>Pipeline</h2>
+          <p>Mapped to the thesis processing stages</p>
+        </div>
+      </div>
+      <ol class="pipeline-list">
+        <li>Secure upload and case creation</li>
+        <li>Faster-Whisper speech-to-text transcription</li>
+        <li>Librosa audio feature extraction</li>
+        <li>DistilBERT linguistic embedding and SVM scoring</li>
+        <li>XGBoost audio scoring and logistic fusion</li>
+        <li>Dashboard visualization and PDF export</li>
+      </ol>
+    </div>
+  </div>
+</div>
+{% endblock %}

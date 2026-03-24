@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}User Management | VishHunter{% endblock %}
+{% block page_title %}User Management{% endblock %}
+{% block page_subtitle %}Manage system users, roles, and access permissions{% endblock %}
+{% block content %}
+<div class="row g-4">
+  <div class="col-xl-8">
+    <div class="panel-card">
+      <div class="panel-header">
+        <div>
+          <h2>System Users</h2>
+          <p>{{ users|length }} total users</p>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-dark table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Last Login</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in users %}
+            <tr>
+              <td>
+                <input class="form-control form-control-dark form-control-sm" type="text" name="full_name" value="{{ row.full_name }}" form="user-form-{{ row.id }}" />
+              </td>
+              <td>{{ row.email }}</td>
+              <td>
+                <select class="form-select form-control-dark form-select-sm" name="role" form="user-form-{{ row.id }}">
+                  <option value="administrator" {% if row.role == 'administrator' %}selected{% endif %}>Administrator</option>
+                  <option value="technician" {% if row.role == 'technician' %}selected{% endif %}>Technician</option>
+                  <option value="analyst" {% if row.role == 'analyst' %}selected{% endif %}>Analyst</option>
+                </select>
+              </td>
+              <td>
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" name="is_active" {% if row.is_active %}checked{% endif %} form="user-form-{{ row.id }}" />
+                  <label class="form-check-label small">{{ "Active" if row.is_active else "Inactive" }}</label>
+                </div>
+              </td>
+              <td>{{ row.last_login_at.strftime("%Y-%m-%d %H:%M") if row.last_login_at else "Never" }}</td>
+              <td class="d-flex gap-2">
+                <form id="user-form-{{ row.id }}" method="post" action="/users/{{ row.id }}/update"></form>
+                <button class="btn btn-sm btn-outline-light" type="submit" form="user-form-{{ row.id }}">Save</button>
+                {% if row.id != user.id %}
+                <form method="post" action="/users/{{ row.id }}/delete" onsubmit="return confirm('Delete this user?')">
+                  <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-xl-4">
+    <div class="panel-card">
+      <div class="panel-header">
+        <div>
+          <h2>Add User</h2>
+          <p>Create a thesis-aligned RBAC account</p>
+        </div>
+      </div>
+      {% if error %}
+      <div class="alert alert-danger">{{ error }}</div>
+      {% endif %}
+      <form method="post" action="/users" class="d-grid gap-3">
+        <input class="form-control form-control-dark" type="text" name="full_name" placeholder="Full name" required />
+        <input class="form-control form-control-dark" type="email" name="email" placeholder="Email" required />
+        <select class="form-select form-control-dark" name="role">
+          <option value="administrator">Administrator</option>
+          <option value="technician">Cybersecurity Technician</option>
+          <option value="analyst">Junior Security Analyst</option>
+        </select>
+        <input class="form-control form-control-dark" type="password" name="password" placeholder="Temporary password" required />
+        <button class="btn btn-primary btn-vish" type="submit">Add User</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

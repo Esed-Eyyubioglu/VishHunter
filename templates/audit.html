@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Audit Logs | VishHunter{% endblock %}
+{% block page_title %}Audit Logs{% endblock %}
+{% block page_subtitle %}Administrative trace of authentication, case handling, and user management{% endblock %}
+{% block content %}
+<div class="panel-card">
+  <div class="panel-header">
+    <div>
+      <h2>System Activity</h2>
+      <p>Operational events aligned with administrator visibility in the thesis UI</p>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-dark table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Timestamp</th>
+          <th>User</th>
+          <th>Action</th>
+          <th>Details</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td>{{ log.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+          <td>{{ log.user.email if log.user else "system" }}</td>
+          <td>{{ log.action }}</td>
+          <td>{{ log.details }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="text-center text-secondary py-4">No audit events recorded yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

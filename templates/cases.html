@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Case History | VishHunter{% endblock %}
+{% block page_title %}Case History{% endblock %}
+{% block page_subtitle %}Historical analysis records with timestamps, status, and risk classification{% endblock %}
+{% block content %}
+<div class="panel-card">
+  <div class="panel-header">
+    <div>
+      <h2>Analyzed Cases</h2>
+      <p>Centralized case management aligned to the thesis use cases</p>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-dark table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Case Number</th>
+          <th>Title</th>
+          <th>Risk</th>
+          <th>Confidence</th>
+          <th>Status</th>
+          <th>Assigned Analyst</th>
+          <th>Created</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for case in cases %}
+        <tr>
+          <td>{{ case.case_number }}</td>
+          <td>{{ case.title }}</td>
+          <td><span class="risk-pill risk-{{ case.risk_level }}">{{ case.risk_level|upper }}</span></td>
+          <td>{{ (case.confidence_score * 100)|round|int }}%</td>
+          <td>{{ case.review_status.replace('_', ' ').title() }}</td>
+          <td>{{ case.assigned_to_user.full_name if case.assigned_to_user else "Unassigned" }}</td>
+          <td>{{ case.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+          <td class="text-end"><a class="btn btn-sm btn-outline-light" href="/cases/{{ case.id }}">Open</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

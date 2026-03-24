@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}System Settings | VishHunter{% endblock %}
+{% block page_title %}System Settings{% endblock %}
+{% block page_subtitle %}Thresholds, datasets, and training controls{% endblock %}
+{% block content %}
+<div class="row g-4">
+  <div class="col-lg-6">
+    <div class="panel-card">
+      <div class="panel-header"><div><h2>Detection Settings</h2><p>Configure model thresholds and training input locations</p></div></div>
+      {% if message %}
+      <div class="alert alert-info">{{ message }}</div>
+      {% endif %}
+      <form method="post" action="/settings" class="d-grid gap-3">
+        <div>
+          <label class="form-label">High-risk threshold</label>
+          <input class="form-control form-control-dark" type="number" min="0" max="1" step="0.01" name="high_threshold" value="{{ app_settings.high_threshold }}" required />
+        </div>
+        <div>
+          <label class="form-label">Medium-risk threshold</label>
+          <input class="form-control form-control-dark" type="number" min="0" max="1" step="0.01" name="medium_threshold" value="{{ app_settings.medium_threshold }}" required />
+        </div>
+        <div>
+          <label class="form-label">Max training samples per class</label>
+          <input class="form-control form-control-dark" type="number" min="20" max="500" step="10" name="max_training_samples" value="{{ app_settings.max_training_samples }}" required />
+        </div>
+        <div>
+          <label class="form-label">Fraud dataset path</label>
+          <input class="form-control form-control-dark" type="text" name="positive_dataset_path" value="{{ app_settings.positive_dataset_path }}" required />
+        </div>
+        <div>
+          <label class="form-label">Benign dataset path</label>
+          <input class="form-control form-control-dark" type="text" name="negative_dataset_path" value="{{ app_settings.negative_dataset_path }}" required />
+        </div>
+        <button class="btn btn-primary btn-vish" type="submit">Save Settings</button>
+      </form>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="panel-card">
+      <div class="panel-header"><div><h2>Training Status</h2><p>Current public-data model state</p></div></div>
+      <ul class="settings-list">
+        <li>Artifacts present: {{ "Yes" if model_status.artifacts_present else "No" }}</li>
+        <li>Fraud dataset: {{ model_status.settings.positive_dataset_path }}</li>
+        <li>Benign dataset: {{ model_status.settings.negative_dataset_path }}</li>
+        <li>Samples used: {{ model_status.metadata.sample_count if model_status.metadata else "Not trained yet" }}</li>
+        <li>Fraud samples: {{ model_status.metadata.fraud_samples if model_status.metadata else "-" }}</li>
+        <li>Benign samples: {{ model_status.metadata.benign_samples if model_status.metadata else "-" }}</li>
+      </ul>
+      {% if user.role == 'administrator' %}
+      <form method="post" action="/settings/retrain" class="mt-4">
+        <button class="btn btn-outline-light w-100" type="submit">Retrain From Public Datasets</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

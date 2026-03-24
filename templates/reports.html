@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Reports & Analytics | VishHunter{% endblock %}
+{% block page_title %}Reports & Analytics{% endblock %}
+{% block page_subtitle %}Detection summaries, trend charts, and export-ready oversight{% endblock %}
+{% block content %}
+<div class="row g-4 mb-4">
+  <div class="col-lg-7">
+    <div class="panel-card">
+      <div class="panel-header">
+        <div>
+          <h2>Monthly Case Volume</h2>
+          <p>Graphical representation of detection results and trends</p>
+        </div>
+      </div>
+      <canvas id="monthlyChart" height="260"></canvas>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="panel-card">
+      <div class="panel-header">
+        <div>
+          <h2>Risk Summary</h2>
+          <p>Current distribution across stored cases</p>
+        </div>
+      </div>
+      <canvas id="reportRiskChart" height="260"></canvas>
+    </div>
+  </div>
+</div>
+<div class="row g-4">
+  <div class="col-md-4"><div class="panel-card stat-card"><div class="text-secondary small">Average Confidence</div><div class="display-value">{{ metrics.avg_confidence }}%</div></div></div>
+  <div class="col-md-4"><div class="panel-card stat-card"><div class="text-secondary small">Review Queue</div><div class="display-value">{{ metrics.pending_reviews }}</div></div></div>
+  <div class="col-md-4"><div class="panel-card stat-card"><div class="text-secondary small">PDF Export</div><div class="display-value">Enabled</div></div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  window.vishhunterReports = {
+    monthlyLabels: {{ monthly_labels | tojson }},
+    monthlyTotals: {{ monthly_totals | tojson }},
+    riskCounts: {{ [risk_counts.low, risk_counts.medium, risk_counts.high] | tojson }}
+  }
+</script>
+{% endblock %}

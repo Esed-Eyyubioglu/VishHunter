@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Case Details | VishHunter{% endblock %}
+{% block page_title %}Case Details and Results{% endblock %}
+{% block page_subtitle %}Transcript, waveform, confidence indicators, and analyst review controls{% endblock %}
+{% block content %}
+<div class="row g-4 mb-4">
+  <div class="col-xl-8">
+    <div class="panel-card h-100">
+      <div class="panel-header">
+        <div>
+          <h2>{{ case.case_number }} - {{ case.title }}</h2>
+          <p>{{ case.summary }}</p>
+        </div>
+        <a class="btn btn-primary btn-vish" href="/cases/{{ case.id }}/report.pdf">Export PDF</a>
+      </div>
+      <div class="row g-3 mb-4">
+        <div class="col-md-3"><div class="metric-tile"><span>Risk Level</span><strong>{{ case.risk_level|upper }}</strong></div></div>
+        <div class="col-md-3"><div class="metric-tile"><span>Confidence</span><strong>{{ (case.confidence_score * 100)|round|int }}%</strong></div></div>
+        <div class="col-md-3"><div class="metric-tile"><span>Audio Score</span><strong>{{ (case.audio_score * 100)|round|int }}%</strong></div></div>
+        <div class="col-md-3"><div class="metric-tile"><span>Text Score</span><strong>{{ (case.text_score * 100)|round|int }}%</strong></div></div>
+      </div>
+      <div class="row g-4">
+        <div class="col-12">
+          <div class="section-label">Transcript</div>
+          <div class="transcript-box">{{ transcript }}</div>
+        </div>
+        <div class="col-12">
+          <div class="section-label">Audio Waveform</div>
+          {% if audio_url %}
+          <div id="waveform" class="waveform-box" data-audio-url="{{ audio_url }}"></div>
+          <audio class="w-100 mt-3" controls src="{{ audio_url }}"></audio>
+          <div class="text-secondary small mt-3">File hash: {{ case.audio_record.file_hash }}</div>
+          {% else %}
+          <div class="waveform-empty">No stored waveform is available for this record.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-xl-4">
+    <div class="panel-card mb-4">
+      <div class="panel-header">
+        <div>
+          <h2>Indicators</h2>
+          <p>Hybrid audio-linguistic explanation</p>
+        </div>
+      </div>
+      <ul class="list-group list-group-flush dark-list">
+        {% for indicator in case.indicators %}
+        <li class="list-group-item">{{ indicator }}</li>
+        {% endfor %}
+        {% if case.text_features %}
+        {% for phrase in case.text_features.suspicious_phrases %}
+        <li class="list-group-item subtle">{{ phrase }}</li>
+        {% endfor %}
+        {% endif %}
+      </ul>
+    </div>
+    <div class="panel-card mb-4">
+      <div class="panel-header">
+        <div>
+          <h2>Feature Snapshot</h2>
+          <p>Stored outputs for transcript, audio, and hybrid fusion</p>
+        </div>
+      </div>
+      <div class="small text-secondary mb-2">MFCC</div>
+      <div class="transcript-box small mb-3">{{ case.audio_features.mfcc_vector if case.audio_features else [] }}</div>
+      <div class="small text-secondary mb-2">Spectral Contrast</div>
+      <div class="transcript-box small mb-3">{{ case.audio_features.spectral_contrast if case.audio_features else [] }}</div>
+      <div class="small text-secondary mb-2">Embedding Preview</div>
+      <div class="transcript-box small">{{ case.text_features.embedding_vector if case.text_features else [] }}</div>
+    </div>
+    <div class="panel-card">
+      <div class="panel-header">
+        <div>
+          <h2>Review & Validate</h2>
+          <p>Junior analyst confirmation workflow</p>
+        </div>
+      </div>
+      {% if user.role in ['analyst', 'administrator'] %}
+      <form method="post" action="/cases/{{ case.id }}/review" class="d-grid gap-3">
+        <select class="form-select form-control-dark" name="review_status">
+          <option value="pending" {% if case.review_status == 'pending' %}selected{% endif %}>Pending</option>
+          <option value="validated_safe" {% if case.review_status == 'validated_safe' %}selected{% endif %}>Validated Safe</option>
+          <option value="escalated_to_sirt" {% if case.review_status == 'escalated_to_sirt' %}selected{% endif %}>Escalated to SIRT</option>
+          <option value="closed" {% if case.review_status == 'closed' %}selected{% endif %}>Closed</option>
+        </select>
+        <textarea class="form-control form-control-dark" rows="5" name="review_notes" placeholder="Analyst review notes">{{ case.review_notes or "" }}</textarea>
+        <button class="btn btn-primary btn-vish" type="submit">Save Review</button>
+      </form>
+      {% else %}
+      <div class="text-secondary">Only analysts and administrators can validate or escalate results.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

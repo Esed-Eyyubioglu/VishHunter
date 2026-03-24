@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Review & Validation | VishHunter{% endblock %}
+{% block page_title %}Review & Validation{% endblock %}
+{% block page_subtitle %}Analyst-focused validation queue for confirming or escalating detections{% endblock %}
+{% block content %}
+<div class="panel-card">
+  <div class="panel-header">
+    <div>
+      <h2>Pending Review Queue</h2>
+      <p>Use this list to validate, close, or escalate system-generated results</p>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-dark table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Case</th>
+          <th>Risk</th>
+          <th>Confidence</th>
+          <th>Assigned</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for case in cases %}
+        <tr>
+          <td>{{ case.case_number }} - {{ case.title }}</td>
+          <td><span class="risk-pill risk-{{ case.risk_level }}">{{ case.risk_level|upper }}</span></td>
+          <td>{{ (case.confidence_score * 100)|round|int }}%</td>
+          <td>{{ case.assigned_to_user.full_name if case.assigned_to_user else "Unassigned" }}</td>
+          <td class="text-end"><a href="/cases/{{ case.id }}" class="btn btn-sm btn-outline-light">Review</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-center text-secondary py-4">No pending cases right now.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

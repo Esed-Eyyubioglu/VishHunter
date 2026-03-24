@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Initial Setup | VishHunter{% endblock %}
+{% block auth_content %}
+<main class="login-shell">
+  <section class="login-card">
+    <div class="login-badge">VH</div>
+    <h1 class="login-title">VishHunter Setup</h1>
+    <p class="login-subtitle">Create the first administrator account to initialize the system.</p>
+    {% if error %}
+    <div class="alert alert-danger py-2">{{ error }}</div>
+    {% endif %}
+    <form method="post" action="/setup" class="d-grid gap-3">
+      <div>
+        <label class="form-label">Full name</label>
+        <input class="form-control form-control-dark" type="text" name="full_name" placeholder="Administrator name" required />
+      </div>
+      <div>
+        <label class="form-label">Email</label>
+        <input class="form-control form-control-dark" type="email" name="email" placeholder="admin@your-org.com" required />
+      </div>
+      <div>
+        <label class="form-label">Password</label>
+        <input class="form-control form-control-dark" type="password" name="password" placeholder="Create a strong password" required />
+      </div>
+      <button class="btn btn-primary btn-vish w-100" type="submit">Create Administrator</button>
+    </form>
+  </section>
+</main>
+{% endblock %}
