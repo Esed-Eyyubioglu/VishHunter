@@ -15,6 +15,7 @@ import torch
 from sklearn.base import clone
 from faster_whisper import WhisperModel
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import confusion_matrix, f1_score, precision_score, recall_score, roc_auc_score
 from sklearn.model_selection import StratifiedKFold, cross_val_predict
 from sklearn.svm import SVC
 from transformers import AutoModel, AutoTokenizer
@@ -146,11 +147,11 @@ class HybridPipeline:
             audio_probs = cross_val_predict(clone(audio_model), audio_vectors_np, labels_np, cv=cv, method="predict_proba")[:, 1]
             text_probs = cross_val_predict(clone(text_model), text_vectors_np, labels_np, cv=cv, method="predict_proba")[:, 1]
             fusion_features = np.column_stack([audio_probs, text_probs, np.abs(audio_probs - text_probs)])
+            fusion_model = LogisticRegression(random_state=42, max_iter=400, class_weight="balanced")
+            fusion_probs = cross_val_predict(clone(fusion_model), fusion_features, labels_np, cv=cv, method="predict_proba")[:, 1]
 
             audio_model.fit(audio_vectors_np, labels_np)
             text_model.fit(text_vectors_np, labels_np)
-
-            fusion_model = LogisticRegression(random_state=42, max_iter=400, class_weight="balanced")
             fusion_model.fit(fusion_features, labels_np)
 
             self._audio_model = audio_model
@@ -167,6 +168,17 @@ class HybridPipeline:
                 "benign_samples": int((labels_np == 0).sum()),
                 "positive_dataset": load_system_settings()["positive_dataset_path"],
                 "negative_dataset": load_system_settings()["negative_dataset_path"],
+                "dataset_scope": {
+                    "positive_domain": "public robocall and scam recordings",
+                    "negative_domain": "public customer-service and banking conversations",
+                    "coverage_warning": "Public datasets do not fully cover every real-world call type or every vishing tactic.",
+                },
+                "validation_metrics": {
+                    "audio_branch": evaluate_probabilities(labels_np, audio_probs, threshold=0.5),
+                    "text_branch": evaluate_probabilities(labels_np, text_probs, threshold=0.5),
+                    "fusion_branch": evaluate_probabilities(labels_np, fusion_probs, threshold=0.5),
+                },
+                "recommended_thresholds": recommend_thresholds(labels_np, fusion_probs),
             }
             self._save_metadata(metadata)
             return metadata
@@ -448,6 +460,32 @@ def linguistic_signal_score(transcript: str) -> tuple[float, list[str], list[str
     if not suspicious:
         score = 0.08 if not benign_markers else 0.04
     return score, indicators, suspicious, benign_markers
+
+
+def evaluate_probabilities(labels: np.ndarray, probabilities: np.ndarray, threshold: float) -> dict:
+    predictions = (probabilities >= threshold).astype(np.int32)
+    tn, fp, fn, tp = confusion_matrix(labels, predictions, labels=[0, 1]).ravel()
+    return {
+        "auc": round(float(roc_auc_score(labels, probabilities)), 4),
+        "precision": round(float(precision_score(labels, predictions, zero_division=0)), 4),
+        "recall": round(float(recall_score(labels, predictions, zero_division=0)), 4),
+        "f1": round(float(f1_score(labels, predictions, zero_division=0)), 4),
+        "false_positive_rate": round(float(fp / (fp + tn)) if (fp + tn) else 0.0, 4),
+        "threshold": round(float(threshold), 4),
+        "confusion_matrix": {"tn": int(tn), "fp": int(fp), "fn": int(fn), "tp": int(tp)},
+    }
+
+
+def recommend_thresholds(labels: np.ndarray, fusion_probabilities: np.ndarray) -> dict:
+    benign = fusion_probabilities[labels == 0]
+    medium_threshold = max(0.45, float(np.quantile(benign, 0.95)))
+    high_threshold = max(0.72, medium_threshold + 0.12, float(np.quantile(benign, 0.99)))
+    high_threshold = min(high_threshold, 0.95)
+    medium_threshold = min(medium_threshold, high_threshold - 0.05)
+    return {
+        "medium": round(medium_threshold, 4),
+        "high": round(high_threshold, 4),
+    }
 
 
 def sha256_file(path: str | Path) -> str:

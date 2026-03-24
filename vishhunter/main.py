@@ -439,6 +439,14 @@ def update_settings(
 @app.post("/settings/retrain")
 def retrain_models(request: Request, user: User = Depends(require_role("administrator")), db: Session = Depends(get_db)) -> Response:
     metadata = pipeline.train_from_public_datasets(force_retrain=True)
+    recommended = metadata.get("recommended_thresholds", {})
+    if recommended:
+        update_system_settings(
+            {
+                "medium_threshold": recommended.get("medium", current_system_settings()["medium_threshold"]),
+                "high_threshold": recommended.get("high", current_system_settings()["high_threshold"]),
+            }
+        )
     log_event(db, user, "model.retrain", "Retrained hybrid pipeline from public datasets")
     db.commit()
     return templates.TemplateResponse(
@@ -448,7 +456,11 @@ def retrain_models(request: Request, user: User = Depends(require_role("administ
             user=user,
             app_settings=current_system_settings(),
             model_status=pipeline.model_status(),
-            message=f"Retraining complete. {metadata.get('sample_count', 0)} samples used.",
+            message=(
+                f"Retraining complete. {metadata.get('sample_count', 0)} samples used. "
+                f"Thresholds updated to medium={recommended.get('medium', current_system_settings()['medium_threshold'])} "
+                f"and high={recommended.get('high', current_system_settings()['high_threshold'])}."
+            ),
         ),
     )
 

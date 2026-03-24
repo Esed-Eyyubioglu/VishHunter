@@ -12,7 +12,7 @@ SETTINGS_PATH = settings.artifact_dir / "system_settings.json"
 DEFAULT_SETTINGS = {
     "high_threshold": 0.72,
     "medium_threshold": 0.45,
-    "max_training_samples": 120,
+    "max_training_samples": 200,
     "positive_dataset_path": str((BASE_DIR / "external-data" / "robocall-audio-dataset").resolve()),
     "negative_dataset_path": str((BASE_DIR / "external-data" / "harper-valley").resolve()),
 }
