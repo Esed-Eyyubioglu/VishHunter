@@ -225,3 +225,48 @@ def current_system_settings() -> dict:
 
 def update_system_settings(values: dict) -> dict:
     return save_system_settings(values)
+
+
+def reprocess_existing_cases(db: Session) -> int:
+    cases = db.scalars(
+        select(Case)
+        .options(
+            joinedload(Case.audio_record),
+            joinedload(Case.audio_features),
+            joinedload(Case.text_features),
+            joinedload(Case.transcription),
+        )
+        .order_by(Case.created_at.asc())
+    ).all()
+    updated = 0
+    for case in cases:
+        if not case.audio_record or not case.audio_record.storage_path:
+            continue
+        audio_path = Path(case.audio_record.storage_path)
+        if not audio_path.exists():
+            continue
+        processed = pipeline.analyze(str(audio_path))
+        case.risk_level = processed.risk_level
+        case.audio_score = processed.audio_score
+        case.text_score = processed.text_score
+        case.risk_score = processed.risk_score
+        case.confidence_score = processed.confidence
+        case.model_verdict = processed.verdict
+        case.indicators = processed.indicators
+        case.summary = processed.summary
+        case.audio_record.file_hash = processed.file_hash
+        case.audio_record.duration_seconds = processed.duration_seconds
+        if case.transcription:
+            case.transcription.encrypted_text = encrypt_text(processed.transcript)
+        if case.audio_features:
+            case.audio_features.mfcc_vector = processed.mfcc_vector
+            case.audio_features.spectral_contrast = processed.spectral_vector
+            case.audio_features.zcr = processed.zcr
+            case.audio_features.pitch_profile = processed.pitch_profile
+            case.audio_features.anomalies = processed.anomalies
+        if case.text_features:
+            case.text_features.embedding_vector = processed.embedding_vector
+            case.text_features.indicators = processed.indicators
+            case.text_features.suspicious_phrases = processed.suspicious_phrases
+        updated += 1
+    return updated

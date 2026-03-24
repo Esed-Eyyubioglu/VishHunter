@@ -27,6 +27,7 @@ uploads/
 artifacts/*.joblib
 artifacts/training_metadata.json
 artifacts/system_settings.json
+artifacts/harper_valley_mix/
 model_cache/
 external-data/
 

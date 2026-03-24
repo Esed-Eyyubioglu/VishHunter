@@ -33,6 +33,7 @@ from .services import (
     get_case_detail,
     log_event,
     monthly_case_volume,
+    reprocess_existing_cases,
     update_system_settings,
     user_rows,
     weekly_case_trend,
@@ -448,6 +449,23 @@ def retrain_models(request: Request, user: User = Depends(require_role("administ
             app_settings=current_system_settings(),
             model_status=pipeline.model_status(),
             message=f"Retraining complete. {metadata.get('sample_count', 0)} samples used.",
+        ),
+    )
+
+
+@app.post("/settings/reprocess")
+def reprocess_cases(request: Request, user: User = Depends(require_role("administrator")), db: Session = Depends(get_db)) -> Response:
+    updated = reprocess_existing_cases(db)
+    log_event(db, user, "model.reprocess", f"Reprocessed {updated} stored cases with current model artifacts")
+    db.commit()
+    return templates.TemplateResponse(
+        "settings.html",
+        common_context(
+            request,
+            user=user,
+            app_settings=current_system_settings(),
+            model_status=pipeline.model_status(),
+            message=f"Reprocessing complete. {updated} stored cases updated.",
         ),
     )
 

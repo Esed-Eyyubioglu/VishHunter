@@ -45,6 +45,13 @@ git clone --depth 1 https://github.com/wspr-ncsu/robocall-audio-dataset.git exte
 git clone --depth 1 https://github.com/cricketclub/gridspace-stanford-harper-valley.git external-data/harper-valley
 ```
 
+If those folders already exist, do not clone again. Either keep using the existing copies or refresh them with:
+
+```powershell
+git -C external-data/robocall-audio-dataset pull
+git -C external-data/harper-valley pull
+```
+
 3. Start the app:
 
 ```powershell
