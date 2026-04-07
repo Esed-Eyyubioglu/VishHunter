@@ -23,3 +23,4 @@ transformers==4.56.0
 torch==2.8.0
 faster-whisper==1.2.1
 sentencepiece==0.2.1
+kagglehub==1.0.0

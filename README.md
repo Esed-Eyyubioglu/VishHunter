@@ -25,6 +25,8 @@ The current training workflow uses real public datasets:
 
 - Fraud / scam call positives: `Robocall Audio Dataset`
 - Benign bank-call negatives: `Gridspace-Stanford Harper Valley`
+- Transcript-only scam and non-scam text samples: `teeconnie/scam-and-non-scam-call-conversation-dataset`
+- Transcript labels for scam determination: `mealss/call-transcripts-scam-determinations`
 
 These are not committed to the repo and should be downloaded locally into `external-data/`.
 
@@ -91,6 +93,7 @@ python -m uvicorn vishhunter.main:app --reload
 ## Notes
 
 - The first model build can take longer because it may download `Faster-Whisper` and `DistilBERT` weights.
+- The first model build may also download the two Kaggle transcript datasets automatically through `kagglehub`.
 - By default the app uses local SQLite for immediate use.
 - To use PostgreSQL, set `DATABASE_URL` before starting the app.
 

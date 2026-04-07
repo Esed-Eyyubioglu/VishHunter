@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import re
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,6 +28,8 @@ from .system_settings import load_system_settings
 
 TEXT_MODEL_NAME = "distilbert-base-uncased"
 WHISPER_MODEL_NAME = "tiny.en"
+KAGGLE_SCAM_TEXT_DATASET = "teeconnie/scam-and-non-scam-call-conversation-dataset"
+KAGGLE_SCAM_LABEL_DATASET = "mealss/call-transcripts-scam-determinations"
 
 
 @dataclass
@@ -115,22 +118,31 @@ class HybridPipeline:
                 return self._load_metadata()
 
             self._ensure_text_encoder()
-            examples = self._load_public_training_examples()
-            if len(examples) < 20:
+            audio_examples = self._load_public_training_examples()
+            text_only_examples = self._load_public_text_examples()
+            if len(audio_examples) < 20:
                 raise RuntimeError("Not enough real public training examples were found.")
+            if len(text_only_examples) < 20:
+                raise RuntimeError("Not enough transcript-only training examples were found.")
 
             audio_vectors = []
-            text_vectors = []
-            labels = []
-            for audio_path, transcript, label in examples:
+            audio_text_vectors = []
+            audio_labels = []
+            for audio_path, transcript, label in audio_examples:
                 feature_vector, _ = self.audio_features(audio_path)
                 audio_vectors.append(feature_vector)
-                text_vectors.append(self.encode_text(transcript))
-                labels.append(label)
+                audio_text_vectors.append(self.encode_text(transcript))
+                audio_labels.append(label)
+
+            combined_text_examples = [(transcript, label) for _, transcript, label in audio_examples] + text_only_examples
+            combined_text_vectors = [self.encode_text(transcript) for transcript, _ in combined_text_examples]
+            combined_text_labels = [label for _, label in combined_text_examples]
 
             audio_vectors_np = np.vstack(audio_vectors)
-            text_vectors_np = np.vstack(text_vectors)
-            labels_np = np.array(labels, dtype=np.int32)
+            audio_text_vectors_np = np.vstack(audio_text_vectors)
+            audio_labels_np = np.array(audio_labels, dtype=np.int32)
+            combined_text_vectors_np = np.vstack(combined_text_vectors)
+            combined_text_labels_np = np.array(combined_text_labels, dtype=np.int32)
 
             audio_model = XGBClassifier(
                 n_estimators=80,
@@ -143,16 +155,42 @@ class HybridPipeline:
                 eval_metric="logloss",
             )
             text_model = SVC(kernel="linear", probability=True, random_state=42, class_weight="balanced")
-            cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-            audio_probs = cross_val_predict(clone(audio_model), audio_vectors_np, labels_np, cv=cv, method="predict_proba")[:, 1]
-            text_probs = cross_val_predict(clone(text_model), text_vectors_np, labels_np, cv=cv, method="predict_proba")[:, 1]
-            fusion_features = np.column_stack([audio_probs, text_probs, np.abs(audio_probs - text_probs)])
+            audio_cv = build_stratified_cv(audio_labels_np)
+            text_cv = build_stratified_cv(combined_text_labels_np)
+            audio_probs = cross_val_predict(
+                clone(audio_model),
+                audio_vectors_np,
+                audio_labels_np,
+                cv=audio_cv,
+                method="predict_proba",
+            )[:, 1]
+            text_probs_audio = cross_val_predict(
+                clone(text_model),
+                audio_text_vectors_np,
+                audio_labels_np,
+                cv=audio_cv,
+                method="predict_proba",
+            )[:, 1]
+            text_probs_combined = cross_val_predict(
+                clone(text_model),
+                combined_text_vectors_np,
+                combined_text_labels_np,
+                cv=text_cv,
+                method="predict_proba",
+            )[:, 1]
+            fusion_features = np.column_stack([audio_probs, text_probs_audio, np.abs(audio_probs - text_probs_audio)])
             fusion_model = LogisticRegression(random_state=42, max_iter=400, class_weight="balanced")
-            fusion_probs = cross_val_predict(clone(fusion_model), fusion_features, labels_np, cv=cv, method="predict_proba")[:, 1]
+            fusion_probs = cross_val_predict(
+                clone(fusion_model),
+                fusion_features,
+                audio_labels_np,
+                cv=audio_cv,
+                method="predict_proba",
+            )[:, 1]
 
-            audio_model.fit(audio_vectors_np, labels_np)
-            text_model.fit(text_vectors_np, labels_np)
-            fusion_model.fit(fusion_features, labels_np)
+            audio_model.fit(audio_vectors_np, audio_labels_np)
+            text_model.fit(combined_text_vectors_np, combined_text_labels_np)
+            fusion_model.fit(fusion_features, audio_labels_np)
 
             self._audio_model = audio_model
             self._text_model = text_model
@@ -163,22 +201,27 @@ class HybridPipeline:
 
             metadata = {
                 "trained_at": str(np.datetime64("now")),
-                "sample_count": len(examples),
-                "fraud_samples": int(labels_np.sum()),
-                "benign_samples": int((labels_np == 0).sum()),
+                "sample_count": len(audio_examples) + len(text_only_examples),
+                "audio_sample_count": len(audio_examples),
+                "text_only_sample_count": len(text_only_examples),
+                "fraud_samples": int(combined_text_labels_np.sum()),
+                "benign_samples": int((combined_text_labels_np == 0).sum()),
+                "audio_fraud_samples": int(audio_labels_np.sum()),
+                "audio_benign_samples": int((audio_labels_np == 0).sum()),
                 "positive_dataset": load_system_settings()["positive_dataset_path"],
                 "negative_dataset": load_system_settings()["negative_dataset_path"],
+                "text_datasets": [KAGGLE_SCAM_TEXT_DATASET, KAGGLE_SCAM_LABEL_DATASET],
                 "dataset_scope": {
-                    "positive_domain": "public robocall and scam recordings",
-                    "negative_domain": "public customer-service and banking conversations",
-                    "coverage_warning": "Public datasets do not fully cover every real-world call type or every vishing tactic.",
+                    "positive_domain": "public robocall audio plus scam transcript corpora",
+                    "negative_domain": "public customer-service and banking conversations plus non-scam transcript corpora",
+                    "coverage_warning": "The model is broader than before, but public datasets still do not fully cover every real-world call type, accent, language variant, or vishing tactic.",
                 },
                 "validation_metrics": {
-                    "audio_branch": evaluate_probabilities(labels_np, audio_probs, threshold=0.5),
-                    "text_branch": evaluate_probabilities(labels_np, text_probs, threshold=0.5),
-                    "fusion_branch": evaluate_probabilities(labels_np, fusion_probs, threshold=0.5),
+                    "audio_branch": evaluate_probabilities(audio_labels_np, audio_probs, threshold=0.5),
+                    "text_branch": evaluate_probabilities(combined_text_labels_np, text_probs_combined, threshold=0.5),
+                    "fusion_branch": evaluate_probabilities(audio_labels_np, fusion_probs, threshold=0.5),
                 },
-                "recommended_thresholds": recommend_thresholds(labels_np, fusion_probs),
+                "recommended_thresholds": recommend_thresholds(audio_labels_np, fusion_probs),
             }
             self._save_metadata(metadata)
             return metadata
@@ -272,7 +315,10 @@ class HybridPipeline:
         effective_audio_score = raw_audio_score
         effective_text_score = (raw_text_score * 0.55) + (rule_score * 0.45)
         if not suspicious_phrases:
-            effective_audio_score = min(effective_audio_score, 0.45 if benign_markers else 0.6)
+            if benign_markers and raw_audio_score < 0.8:
+                effective_audio_score = min(effective_audio_score, 0.45)
+            elif raw_audio_score < 0.85:
+                effective_audio_score = min(effective_audio_score, 0.6)
             effective_text_score = min(effective_text_score, 0.4 if benign_markers else effective_text_score)
 
         fusion_input = np.array(
@@ -281,14 +327,14 @@ class HybridPipeline:
         )
         model_risk_score = float(self._fusion_model.predict_proba(fusion_input)[0, 1])
         risk_score = (model_risk_score * 0.55) + (rule_score * 0.45)
-        if not suspicious_phrases and len(benign_markers) >= 2:
+        if not suspicious_phrases and len(benign_markers) >= 2 and raw_audio_score < 0.8:
             risk_score = min(risk_score, 0.24)
-        elif not suspicious_phrases and benign_markers:
+        elif not suspicious_phrases and benign_markers and raw_audio_score < 0.8:
             risk_score = min(risk_score, 0.34)
 
         risk_level = "high" if risk_score >= high_threshold else "medium" if risk_score >= medium_threshold else "low"
         verdict = "fraud" if risk_score >= medium_threshold else "safe"
-        confidence = max(rule_score, effective_audio_score, effective_text_score)
+        confidence = max(risk_score, 1.0 - risk_score)
 
         if effective_text_score > effective_audio_score:
             indicators.append("Linguistic model contribution dominates the final score")
@@ -335,6 +381,13 @@ class HybridPipeline:
         fraud_examples = load_robocall_examples(positive_root, max_samples)
         benign_examples = load_harper_valley_examples(negative_root, max_samples, self.artifact_dir)
         return fraud_examples + benign_examples
+
+    def _load_public_text_examples(self) -> list[tuple[str, int]]:
+        current = load_system_settings()
+        max_samples = int(current["max_training_samples"])
+        scam_examples, benign_examples = load_kaggle_scambait_examples(max_samples=max_samples)
+        better_examples = load_better30_examples(max_samples=max_samples)
+        return scam_examples + benign_examples + better_examples
 
 
 def load_robocall_examples(dataset_root: Path, max_samples: int) -> list[tuple[str, str, int]]:
@@ -403,6 +456,90 @@ def build_mixed_call_audio(agent_audio_path: Path, caller_audio_path: Path, outp
     sf.write(output_path, mixed_waveform, agent_sr)
 
 
+def load_kaggle_scambait_examples(max_samples: int) -> tuple[list[tuple[str, int]], list[tuple[str, int]]]:
+    dataset_root = ensure_kaggle_dataset(KAGGLE_SCAM_TEXT_DATASET)
+    scam_path = dataset_root / "English_Scam.txt"
+    non_scam_path = dataset_root / "English_NonScam.txt"
+    if not scam_path.exists() or not non_scam_path.exists():
+        raise RuntimeError(f"Kaggle text dataset not found at {dataset_root}")
+
+    scam_examples = []
+    for line in read_non_empty_lines(scam_path):
+        cleaned = re.sub(r"^\d+\.\s*", "", line).strip()
+        if cleaned:
+            scam_examples.append((cleaned, 1))
+        if len(scam_examples) >= max_samples * 2:
+            break
+
+    benign_examples = []
+    for line in read_non_empty_lines(non_scam_path):
+        if line:
+            benign_examples.append((line, 0))
+        if len(benign_examples) >= max_samples * 2:
+            break
+    return scam_examples, benign_examples
+
+
+def load_better30_examples(max_samples: int) -> list[tuple[str, int]]:
+    dataset_root = ensure_kaggle_dataset(KAGGLE_SCAM_LABEL_DATASET)
+    csv_path = dataset_root / "BETTER30.csv"
+    if not csv_path.exists():
+        raise RuntimeError(f"BETTER30 dataset not found at {dataset_root}")
+
+    examples: list[tuple[str, int]] = []
+    with open(csv_path, "r", encoding="utf-8-sig", newline="") as file:
+        reader = csv.DictReader(file)
+        for row in reader:
+            text = (row.get("TEXT") or "").strip()
+            label = normalize_better30_label(row.get("LABEL") or "")
+            if text and label is not None:
+                examples.append((text, label))
+            if len(examples) >= max_samples * 3:
+                break
+    return examples
+
+
+def normalize_better30_label(raw_label: str) -> int | None:
+    label = raw_label.strip().strip('"').lower()
+    if not label:
+        return None
+    positive_markers = (
+        "scam",
+        "suspicious",
+        "potential_scam",
+        "highly_suspicious",
+        "slightly_suspicious",
+        "urgency",
+        "dangerous",
+        "dismissing official protocols",
+    )
+    negative_markers = (
+        "neutral",
+        "legitimate",
+        "standard_opening",
+        "polite_ending",
+        "adhering to protocols",
+        "emphasizing security and compliance",
+    )
+    if any(marker in label for marker in positive_markers):
+        return 1
+    if any(marker in label for marker in negative_markers):
+        return 0
+    return None
+
+
+def ensure_kaggle_dataset(dataset_slug: str) -> Path:
+    try:
+        import kagglehub
+    except ImportError as exc:
+        raise RuntimeError("kagglehub is required to download the Kaggle transcript datasets.") from exc
+    return Path(kagglehub.dataset_download(dataset_slug))
+
+
+def read_non_empty_lines(path: Path) -> list[str]:
+    return [line.strip() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
 def linguistic_signal_score(transcript: str) -> tuple[float, list[str], list[str], list[str]]:
     suspicious_phrases_map = {
         "urgent": 0.18,
@@ -418,9 +555,28 @@ def linguistic_signal_score(transcript: str) -> tuple[float, list[str], list[str
         "transfer": 0.18,
         "wire": 0.18,
         "gift card": 0.3,
+        "voucher": 0.28,
+        "bitcoin": 0.32,
+        "crypto": 0.28,
         "social security": 0.3,
         "suspend": 0.16,
         "locked": 0.12,
+        "remote access": 0.32,
+        "anydesk": 0.35,
+        "teamviewer": 0.35,
+        "refund": 0.14,
+        "technical support": 0.24,
+        "tech support": 0.24,
+        "windows support": 0.28,
+        "microsoft certified technicians": 0.34,
+        "computer technical department": 0.32,
+        "security check-up": 0.18,
+        "warning messages": 0.16,
+        "virus": 0.2,
+        "computer slow": 0.16,
+        "stay on the line": 0.18,
+        "do not tell anyone": 0.28,
+        "processing fee": 0.22,
     }
     benign_phrases = [
         "thank you for calling",
@@ -448,6 +604,8 @@ def linguistic_signal_score(transcript: str) -> tuple[float, list[str], list[str
         indicators.append("Credential harvesting language detected")
     if any(phrase in lower for phrase in ("transfer", "wire", "gift card", "social security")):
         indicators.append("Sensitive payment or identity extraction detected")
+    if any(phrase in lower for phrase in ("technical support", "tech support", "windows support", "microsoft certified technicians", "computer technical department", "virus")):
+        indicators.append("Tech-support scam language detected")
     if benign_markers and not indicators:
         indicators.append("Routine service-oriented conversation detected")
     elif not indicators:
@@ -455,11 +613,22 @@ def linguistic_signal_score(transcript: str) -> tuple[float, list[str], list[str
     score = min(0.98, sum(suspicious_phrases_map[phrase] for phrase in suspicious))
     if suspicious and "bank" in suspicious and any(phrase in suspicious for phrase in ("otp", "password", "verification code", "one-time password")):
         score = min(0.98, score + 0.18)
+    if any(phrase in suspicious for phrase in ("remote access", "anydesk", "teamviewer")):
+        score = min(0.98, score + 0.12)
+    if any(phrase in suspicious for phrase in ("windows support", "microsoft certified technicians", "computer technical department")):
+        score = min(0.98, score + 0.16)
     if benign_markers:
         score = max(0.03, score - (0.08 * min(len(benign_markers), 3)))
     if not suspicious:
         score = 0.08 if not benign_markers else 0.04
     return score, indicators, suspicious, benign_markers
+
+
+def build_stratified_cv(labels: np.ndarray) -> StratifiedKFold:
+    _, counts = np.unique(labels, return_counts=True)
+    min_count = int(counts.min()) if len(counts) else 2
+    n_splits = max(2, min(5, min_count))
+    return StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
 
 
 def evaluate_probabilities(labels: np.ndarray, probabilities: np.ndarray, threshold: float) -> dict:
