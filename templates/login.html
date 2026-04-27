@@ -3,9 +3,9 @@
 {% block auth_content %}
 <main class="login-shell">
   <section class="login-card">
-    <div class="login-badge">VH</div>
+    <div class="login-badge"><span class="material-symbols-outlined">security</span></div>
     <h1 class="login-title">VishHunter</h1>
-    <p class="login-subtitle">AI-Driven Vishing Detection System</p>
+    <p class="login-subtitle">Vishing Detection Unit - Authorization Required</p>
     {% if error %}
     <div class="alert alert-danger py-2">{{ error }}</div>
     {% endif %}
@@ -15,10 +15,10 @@
         <input class="form-control form-control-dark" type="email" name="email" placeholder="user@example.com" required />
       </div>
       <div>
-        <label class="form-label">Password</label>
+        <label class="form-label">Security Credential</label>
         <input class="form-control form-control-dark" type="password" name="password" placeholder="Enter your password" required />
       </div>
-      <button class="btn btn-primary btn-vish w-100" type="submit">Sign In</button>
+      <button class="btn btn-primary btn-vish w-100" type="submit"><span class="material-symbols-outlined">shield_lock</span>Secure Sign In</button>
     </form>
   </section>
 </main>

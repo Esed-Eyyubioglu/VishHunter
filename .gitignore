@@ -30,6 +30,9 @@ artifacts/system_settings.json
 artifacts/harper_valley_mix/
 model_cache/
 external-data/
+.design-template/
+stitch_vishhunter_soc_interface_design*.zip
+ui-smoke.db
 
 # vercel
 .vercel

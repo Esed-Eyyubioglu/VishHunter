@@ -3,9 +3,9 @@
 {% block auth_content %}
 <main class="login-shell">
   <section class="login-card">
-    <div class="login-badge">VH</div>
+    <div class="login-badge"><span class="material-symbols-outlined">admin_panel_settings</span></div>
     <h1 class="login-title">VishHunter Setup</h1>
-    <p class="login-subtitle">Create the first administrator account to initialize the system.</p>
+    <p class="login-subtitle">Initialize Secure Operations Workspace</p>
     {% if error %}
     <div class="alert alert-danger py-2">{{ error }}</div>
     {% endif %}
@@ -22,7 +22,7 @@
         <label class="form-label">Password</label>
         <input class="form-control form-control-dark" type="password" name="password" placeholder="Create a strong password" required />
       </div>
-      <button class="btn btn-primary btn-vish w-100" type="submit">Create Administrator</button>
+      <button class="btn btn-primary btn-vish w-100" type="submit"><span class="material-symbols-outlined">person_add</span>Create Administrator</button>
     </form>
   </section>
 </main>
