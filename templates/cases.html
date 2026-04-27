@@ -3,6 +3,32 @@
 {% block page_title %}Case History{% endblock %}
 {% block page_subtitle %}Historical analysis records with timestamps, status, and risk classification{% endblock %}
 {% block content %}
+<div class="case-filter-bar" aria-label="Case history filters">
+  <div class="case-search">
+    <span class="material-symbols-outlined" aria-hidden="true">search</span>
+    <input id="caseSearch" class="case-filter-input" type="search" placeholder="Search by Case ID, title, or Analyst name..." autocomplete="off">
+  </div>
+  <div class="case-filter-controls">
+    <span class="case-filter-label">Filter By:</span>
+    <select id="riskFilter" class="case-filter-select" aria-label="Filter by risk level">
+      <option value="all">All Risk Levels</option>
+      <option value="high">High Risk</option>
+      <option value="medium">Medium Risk</option>
+      <option value="low">Low Risk</option>
+    </select>
+    <select id="statusFilter" class="case-filter-select" aria-label="Filter by status">
+      <option value="all">All Statuses</option>
+      <option value="pending">Pending</option>
+      <option value="validated_safe">Validated Safe</option>
+      <option value="escalated_to_sirt">Escalated To SIRT</option>
+      <option value="closed">Closed</option>
+    </select>
+    <button id="caseFilterReset" class="case-filter-refresh" type="button" aria-label="Reset case filters">
+      <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+    </button>
+  </div>
+</div>
+
 <div class="panel-card">
   <div class="panel-header">
     <div>
@@ -26,7 +52,7 @@
       </thead>
       <tbody>
         {% for case in cases %}
-        <tr>
+        <tr class="case-row" data-search="{{ (case.case_number ~ ' ' ~ case.title ~ ' ' ~ (case.assigned_to_user.full_name if case.assigned_to_user else 'Unassigned'))|lower }}" data-risk="{{ case.risk_level }}" data-status="{{ case.review_status }}">
           <td>{{ case.case_number }}</td>
           <td>{{ case.title }}</td>
           <td><span class="risk-pill risk-{{ case.risk_level }}">{{ case.risk_level|upper }}</span></td>
@@ -37,8 +63,61 @@
           <td class="text-end"><a class="btn btn-sm btn-outline-light" href="/cases/{{ case.id }}">Open</a></td>
         </tr>
         {% endfor %}
+        <tr id="caseFilterEmpty" class="d-none">
+          <td colspan="8" class="text-center text-secondary py-4">No cases match the current filters.</td>
+        </tr>
       </tbody>
     </table>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const search = document.getElementById("caseSearch");
+  const risk = document.getElementById("riskFilter");
+  const status = document.getElementById("statusFilter");
+  const reset = document.getElementById("caseFilterReset");
+  const rows = Array.from(document.querySelectorAll(".case-row"));
+  const empty = document.getElementById("caseFilterEmpty");
+
+  if (!search || !risk || !status || !reset) {
+    return;
+  }
+
+  const applyFilters = () => {
+    const query = search.value.trim().toLowerCase();
+    const riskValue = risk.value;
+    const statusValue = status.value;
+    let visibleRows = 0;
+
+    rows.forEach((row) => {
+      const matchesSearch = !query || row.dataset.search.includes(query);
+      const matchesRisk = riskValue === "all" || row.dataset.risk === riskValue;
+      const matchesStatus = statusValue === "all" || row.dataset.status === statusValue;
+      const shouldShow = matchesSearch && matchesRisk && matchesStatus;
+
+      row.classList.toggle("d-none", !shouldShow);
+      if (shouldShow) {
+        visibleRows += 1;
+      }
+    });
+
+    if (empty) {
+      empty.classList.toggle("d-none", visibleRows !== 0);
+    }
+  };
+
+  search.addEventListener("input", applyFilters);
+  risk.addEventListener("change", applyFilters);
+  status.addEventListener("change", applyFilters);
+  reset.addEventListener("click", () => {
+    search.value = "";
+    risk.value = "all";
+    status.value = "all";
+    applyFilters();
+  });
+})();
+</script>
 {% endblock %}

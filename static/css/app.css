@@ -305,6 +305,97 @@ a {
   border-radius: var(--radius-md);
 }
 
+.case-filter-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: var(--surface-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(14px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.case-search {
+  position: relative;
+  flex: 1 1 360px;
+}
+
+.case-search .material-symbols-outlined {
+  position: absolute;
+  left: 1rem;
+  top: 50%;
+  color: var(--muted);
+  font-size: 1.45rem;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.case-filter-input,
+.case-filter-select,
+.case-filter-refresh {
+  min-height: 46px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+}
+
+.case-filter-input {
+  width: 100%;
+  padding: 0.7rem 1rem 0.7rem 3rem;
+}
+
+.case-filter-input::placeholder {
+  color: rgba(154, 168, 187, 0.6);
+}
+
+.case-filter-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.case-filter-label {
+  color: var(--muted);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.case-filter-select {
+  padding: 0.65rem 2rem 0.65rem 0.85rem;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.case-filter-refresh {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  padding: 0;
+}
+
+.case-filter-refresh .material-symbols-outlined {
+  color: var(--muted);
+  font-size: 1.2rem;
+}
+
+.case-filter-input:focus,
+.case-filter-select:focus,
+.case-filter-refresh:focus {
+  border-color: var(--primary);
+  outline: none;
+  box-shadow: 0 0 0 1px rgba(173, 198, 255, 0.45);
+}
+
 .table {
   --bs-table-bg: transparent;
   --bs-table-color: var(--text);
@@ -787,5 +878,17 @@ canvas {
 
   .panel-header {
     flex-direction: column;
+  }
+
+  .case-filter-controls {
+    width: 100%;
+  }
+
+  .case-filter-label {
+    width: 100%;
+  }
+
+  .case-filter-select {
+    flex: 1 1 150px;
   }
 }
