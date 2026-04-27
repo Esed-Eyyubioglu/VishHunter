@@ -530,6 +530,81 @@ a {
   border-color: rgba(173, 198, 255, 0.24);
 }
 
+.upload-zone-ingest {
+  min-height: 340px;
+  justify-items: center;
+  align-content: center;
+  gap: 0.9rem;
+  cursor: pointer;
+  text-align: center;
+  border-width: 2px;
+  border-style: dashed;
+  border-color: rgba(173, 198, 255, 0.24);
+  background: rgba(5, 20, 36, 0.48);
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.upload-zone-ingest:hover,
+.upload-zone-ingest:focus-within {
+  border-color: rgba(173, 198, 255, 0.46);
+  background: rgba(13, 28, 45, 0.7);
+}
+
+.upload-icon {
+  width: 68px;
+  height: 68px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-lg);
+  background: rgba(173, 198, 255, 0.1);
+  border: 1px solid rgba(173, 198, 255, 0.08);
+  color: var(--primary);
+  box-shadow: 0 0 28px rgba(77, 142, 255, 0.12);
+}
+
+.upload-icon .material-symbols-outlined {
+  font-size: 2rem;
+}
+
+.upload-title {
+  margin-top: 0.35rem;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.upload-copy {
+  color: var(--muted-strong);
+}
+
+.upload-copy strong {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.upload-device-option {
+  min-width: min(100%, 320px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8rem;
+  margin-top: 0.8rem;
+  padding: 0.9rem 1.2rem;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(18, 33, 49, 0.72);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.upload-device-option .material-symbols-outlined {
+  color: var(--primary);
+}
+
 .metric-tile {
   height: 100%;
   text-align: center;
