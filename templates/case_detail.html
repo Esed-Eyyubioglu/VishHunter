@@ -136,7 +136,7 @@
         </div>
         {% endif %}
       </div>
-      {% if user.role in ['analyst', 'administrator'] and case.status == 'analyzed' %}
+      {% if case.status == 'analyzed' and (user.role == 'administrator' or (user.role == 'analyst' and case.assigned_to == user.id)) %}
       <form method="post" action="/cases/{{ case.id }}/review" class="d-grid gap-3">
         <select class="form-select form-control-dark" name="review_status">
           <option value="pending" {% if case.review_status == 'pending' %}selected{% endif %}>Pending</option>
@@ -149,6 +149,8 @@
       </form>
       {% elif case.status != 'analyzed' %}
       <div class="text-secondary">Review controls unlock after the background analysis finishes.</div>
+      {% elif user.role == 'analyst' and case.assigned_to != user.id %}
+      <div class="text-secondary">This case is assigned to another analyst, so validation controls are read-only for your account.</div>
       {% else %}
       <div class="text-secondary">Only analysts and administrators can change the validation decision.</div>
       {% endif %}

@@ -344,6 +344,10 @@ def review_case(
     case = db.scalar(select(Case).where(Case.id == case_id))
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+    if case.status != "analyzed":
+        raise HTTPException(status_code=400, detail="Case analysis is not complete yet")
+    if user.role == "analyst" and case.assigned_to != user.id:
+        raise HTTPException(status_code=403, detail="Analysts can only validate cases assigned to them")
     case.review_status = review_status
     case.review_notes = review_notes
     case.validated_at = datetime.utcnow()
