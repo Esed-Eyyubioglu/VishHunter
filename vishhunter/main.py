@@ -21,6 +21,7 @@ from .ml import pipeline
 from .models import Case, User
 from .security import create_access_token, decode_access_token, hash_password, verify_password
 from .services import (
+    active_analyst_rows,
     any_users_exist,
     audit_rows,
     case_rows,
@@ -95,6 +96,18 @@ def common_context(request: Request, user: User | None = None, **extra: object) 
     context = {"request": request, "user": user, "active_path": request.url.path}
     context.update(extra)
     return context
+
+
+def upload_context(request: Request, db: Session, user: User, **extra: object) -> dict:
+    context = {
+        "success": None,
+        "error": None,
+        "model_status": pipeline.model_status(),
+        "analysts": active_analyst_rows(db),
+        "selected_analyst_id": "",
+    }
+    context.update(extra)
+    return common_context(request, user=user, **context)
 
 
 @app.get("/")
@@ -197,10 +210,14 @@ def dashboard(request: Request, user: User = Depends(require_user), db: Session 
 
 
 @app.get("/upload")
-def upload_page(request: Request, user: User = Depends(require_role("technician", "administrator"))) -> Response:
+def upload_page(
+    request: Request,
+    user: User = Depends(require_role("technician", "administrator")),
+    db: Session = Depends(get_db),
+) -> Response:
     return templates.TemplateResponse(
         "upload.html",
-        common_context(request, user=user, success=None, error=None, model_status=pipeline.model_status()),
+        upload_context(request, db, user),
     )
 
 
@@ -208,27 +225,53 @@ def upload_page(request: Request, user: User = Depends(require_role("technician"
 def upload_submit(
     request: Request,
     audio_file: UploadFile = File(...),
+    assigned_analyst_id: str = Form(...),
     user: User = Depends(require_role("technician", "administrator")),
     db: Session = Depends(get_db),
 ) -> Response:
     if not audio_file.filename:
         return templates.TemplateResponse(
             "upload.html",
-            common_context(request, user=user, error="Please choose an audio file.", success=None, model_status=pipeline.model_status()),
+            upload_context(
+                request,
+                db,
+                user,
+                error="Please choose an audio file.",
+                selected_analyst_id=assigned_analyst_id,
+            ),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    assigned_analyst = db.scalar(
+        select(User).where(
+            User.id == assigned_analyst_id,
+            User.role == "analyst",
+            User.is_active == True,
+        )
+    )
+    if not assigned_analyst:
+        return templates.TemplateResponse(
+            "upload.html",
+            upload_context(
+                request,
+                db,
+                user,
+                error="Choose an active junior security analyst before starting analysis.",
+                selected_analyst_id=assigned_analyst_id,
+            ),
             status_code=status.HTTP_400_BAD_REQUEST,
         )
     try:
-        case = create_case_from_upload(db, file=audio_file, uploaded_by=user)
+        case = create_case_from_upload(db, file=audio_file, uploaded_by=user, assigned_to=assigned_analyst)
     except Exception as exc:
         db.rollback()
         return templates.TemplateResponse(
             "upload.html",
-            common_context(
+            upload_context(
                 request,
+                db,
                 user=user,
                 error=f"Upload failed: {exc}",
-                success=None,
-                model_status=pipeline.model_status(),
+                selected_analyst_id=assigned_analyst_id,
             ),
             status_code=status.HTTP_400_BAD_REQUEST,
         )
@@ -250,8 +293,33 @@ def case_detail_page(request: Request, case_id: str, user: User = Depends(requir
     audio_url = f"/uploads/{Path(case.audio_record.storage_path).name}" if case.audio_record and case.audio_record.storage_path else None
     return templates.TemplateResponse(
         "case_detail.html",
-        common_context(request, user=user, case=case, transcript=transcript, audio_url=audio_url),
+        common_context(request, user=user, case=case, transcript=transcript, audio_url=audio_url, analysts=active_analyst_rows(db)),
     )
+
+
+@app.post("/cases/{case_id}/assign")
+def assign_case(
+    case_id: str,
+    assigned_analyst_id: str = Form(...),
+    user: User = Depends(require_role("technician", "administrator")),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    case = db.scalar(select(Case).where(Case.id == case_id))
+    if not case:
+        raise HTTPException(status_code=404, detail="Case not found")
+    analyst = db.scalar(
+        select(User).where(
+            User.id == assigned_analyst_id,
+            User.role == "analyst",
+            User.is_active == True,
+        )
+    )
+    if not analyst:
+        raise HTTPException(status_code=400, detail="Choose an active junior security analyst.")
+    case.assigned_to = analyst.id
+    log_event(db, user, "case.assign", f"{case.case_number} assigned to {analyst.email}")
+    db.commit()
+    return RedirectResponse(f"/cases/{case_id}", status_code=status.HTTP_302_FOUND)
 
 
 @app.post("/cases/{case_id}/review")
@@ -297,6 +365,8 @@ def validation_page(
     db: Session = Depends(get_db),
 ) -> Response:
     pending_cases = [case for case in case_rows(db) if case.review_status == "pending"]
+    if user.role == "analyst":
+        pending_cases = [case for case in pending_cases if case.assigned_to == user.id]
     return templates.TemplateResponse("validation.html", common_context(request, user=user, cases=pending_cases))
 
 

@@ -19,6 +19,20 @@
       <div class="alert alert-info">Model artifacts are not built yet. The first upload will trigger training from the configured public datasets.</div>
       {% endif %}
       <form method="post" action="/upload" enctype="multipart/form-data" class="d-grid gap-4">
+        <div>
+          <label class="form-label">Assign Junior Security Analyst</label>
+          <select class="form-select form-control-dark" name="assigned_analyst_id" required>
+            <option value="" {% if not selected_analyst_id %}selected{% endif %} disabled>Choose analyst</option>
+            {% for analyst in analysts %}
+            <option value="{{ analyst.id }}" {% if selected_analyst_id == analyst.id %}selected{% endif %}>
+              {{ analyst.full_name }} - {{ analyst.email }}
+            </option>
+            {% endfor %}
+          </select>
+          {% if not analysts %}
+          <div class="text-warning small mt-2">No active analyst accounts are available. Ask an administrator to create or activate one before initiating a case.</div>
+          {% endif %}
+        </div>
         <label class="upload-zone upload-zone-ingest" for="audio_file">
           <span class="upload-icon">
             <span class="material-symbols-outlined">upload_file</span>
@@ -48,6 +62,7 @@
         </div>
       </div>
       <ol class="pipeline-list">
+        <li>Select responsible junior analyst</li>
         <li>Secure upload and case creation</li>
         <li>Faster-Whisper speech-to-text transcription</li>
         <li>Librosa audio feature extraction</li>

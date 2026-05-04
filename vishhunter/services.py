@@ -69,6 +69,7 @@ def create_case_from_upload(
     *,
     file: UploadFile,
     uploaded_by: User,
+    assigned_to: User,
 ) -> Case:
     storage_path, file_size = save_upload(file)
     try:
@@ -76,12 +77,11 @@ def create_case_from_upload(
     except Exception:
         Path(storage_path).unlink(missing_ok=True)
         raise
-    analyst = db.scalar(select(User).where(User.role == "analyst", User.is_active == True))
     case = Case(
         case_number=next_case_number(db),
         title=(file.filename or "Uploaded call recording").rsplit(".", 1)[0].replace("-", " ").title(),
         uploaded_by=uploaded_by.id,
-        assigned_to=analyst.id if analyst else None,
+        assigned_to=assigned_to.id,
         status="analyzed",
         risk_level=processed.risk_level,
         audio_score=processed.audio_score,
@@ -127,7 +127,7 @@ def create_case_from_upload(
             suspicious_phrases=processed.suspicious_phrases,
         )
     )
-    log_event(db, uploaded_by, "case.upload", f"{case.case_number} uploaded and analyzed")
+    log_event(db, uploaded_by, "case.upload", f"{case.case_number} uploaded, analyzed, and assigned to {assigned_to.email}")
     return case
 
 
@@ -207,6 +207,14 @@ def case_rows(db: Session) -> list[Case]:
 
 def user_rows(db: Session) -> list[User]:
     return db.scalars(select(User).order_by(User.created_at.asc())).all()
+
+
+def active_analyst_rows(db: Session) -> list[User]:
+    return db.scalars(
+        select(User)
+        .where(User.role == "analyst", User.is_active == True)
+        .order_by(User.full_name.asc())
+    ).all()
 
 
 def audit_rows(db: Session) -> list[AuditLog]:

@@ -41,6 +41,30 @@
     <div class="panel-card mb-4">
       <div class="panel-header">
         <div>
+          <h2>Case Assignment</h2>
+          <p>Ownership for analyst validation and escalation</p>
+        </div>
+      </div>
+      <div class="settings-list mb-3">
+        <div>Uploaded by: {{ case.uploaded_by_user.full_name if case.uploaded_by_user else "Unknown" }}</div>
+        <div>Assigned analyst: {{ case.assigned_to_user.full_name if case.assigned_to_user else "Unassigned" }}</div>
+      </div>
+      {% if user.role in ['technician', 'administrator'] %}
+      <form method="post" action="/cases/{{ case.id }}/assign" class="d-grid gap-3">
+        <select class="form-select form-control-dark" name="assigned_analyst_id" required>
+          {% for analyst in analysts %}
+          <option value="{{ analyst.id }}" {% if case.assigned_to == analyst.id %}selected{% endif %}>
+            {{ analyst.full_name }} - {{ analyst.email }}
+          </option>
+          {% endfor %}
+        </select>
+        <button class="btn btn-outline-light" type="submit"><span class="material-symbols-outlined">assignment_ind</span>Update Assignment</button>
+      </form>
+      {% endif %}
+    </div>
+    <div class="panel-card mb-4">
+      <div class="panel-header">
+        <div>
           <h2>Indicators</h2>
           <p>Hybrid audio-linguistic explanation</p>
         </div>
