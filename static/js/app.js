@@ -5,6 +5,32 @@ function initChart(id, config) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  const audioInput = document.getElementById("audio_file")
+  const selectedFile = document.getElementById("selectedAudioFile")
+  const uploadZone = audioInput?.closest(".upload-zone-ingest")
+
+  if (audioInput && selectedFile && uploadZone) {
+    const selectedFileText = selectedFile.querySelector(".selected-file-text")
+    const uploadTitle = uploadZone.querySelector(".upload-title")
+
+    audioInput.addEventListener("change", () => {
+      const file = audioInput.files?.[0]
+      if (!file) {
+        uploadZone.classList.remove("has-file")
+        selectedFile.classList.add("d-none")
+        if (uploadTitle) uploadTitle.textContent = "Drag and drop audio files"
+        if (selectedFileText) selectedFileText.textContent = "No file selected"
+        return
+      }
+
+      const fileSizeMb = file.size ? ` (${(file.size / (1024 * 1024)).toFixed(2)} MB)` : ""
+      uploadZone.classList.add("has-file")
+      selectedFile.classList.remove("d-none")
+      if (uploadTitle) uploadTitle.textContent = "Audio file selected"
+      if (selectedFileText) selectedFileText.textContent = `${file.name}${fileSizeMb}`
+    })
+  }
+
   if (window.vishhunterCharts) {
     initChart("riskChart", {
       type: "pie",

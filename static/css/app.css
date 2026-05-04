@@ -641,6 +641,11 @@ a {
   background: rgba(13, 28, 45, 0.7);
 }
 
+.upload-zone-ingest.has-file {
+  border-color: rgba(45, 170, 67, 0.62);
+  background: rgba(8, 36, 34, 0.56);
+}
+
 .upload-icon {
   width: 68px;
   height: 68px;
@@ -694,6 +699,30 @@ a {
 
 .upload-device-option .material-symbols-outlined {
   color: var(--primary);
+}
+
+.selected-file-pill {
+  max-width: min(100%, 520px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  padding: 0.8rem 1rem;
+  color: var(--text);
+  border: 1px solid rgba(45, 170, 67, 0.46);
+  border-radius: var(--radius-sm);
+  background: rgba(45, 170, 67, 0.12);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.selected-file-pill .material-symbols-outlined {
+  color: #74d887;
+}
+
+.selected-file-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .metric-tile {
