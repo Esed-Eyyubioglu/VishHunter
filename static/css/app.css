@@ -812,6 +812,35 @@ a {
   color: var(--muted-strong);
 }
 
+.review-status-summary {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.review-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.review-status-row span {
+  color: var(--muted);
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.review-status-row strong {
+  color: var(--text);
+  text-align: right;
+  font-size: 0.92rem;
+}
+
 .waveform-box {
   min-height: 140px;
 }

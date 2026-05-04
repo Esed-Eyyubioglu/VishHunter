@@ -116,6 +116,26 @@
           <p>Junior analyst confirmation workflow</p>
         </div>
       </div>
+      <div class="review-status-summary mb-3">
+        <div class="review-status-row">
+          <span>Validation Status</span>
+          <strong>{{ case.review_status.replace('_', ' ').title() }}</strong>
+        </div>
+        <div class="review-status-row">
+          <span>Responsible Analyst</span>
+          <strong>{{ case.assigned_to_user.full_name if case.assigned_to_user else "Unassigned" }}</strong>
+        </div>
+        <div class="review-status-row">
+          <span>Validated At</span>
+          <strong>{{ case.validated_at.strftime("%Y-%m-%d %H:%M") if case.validated_at else "Not validated yet" }}</strong>
+        </div>
+        {% if case.review_notes %}
+        <div>
+          <div class="small text-secondary mb-2">Analyst Notes</div>
+          <div class="transcript-box small">{{ case.review_notes }}</div>
+        </div>
+        {% endif %}
+      </div>
       {% if user.role in ['analyst', 'administrator'] and case.status == 'analyzed' %}
       <form method="post" action="/cases/{{ case.id }}/review" class="d-grid gap-3">
         <select class="form-select form-control-dark" name="review_status">
@@ -130,7 +150,7 @@
       {% elif case.status != 'analyzed' %}
       <div class="text-secondary">Review controls unlock after the background analysis finishes.</div>
       {% else %}
-      <div class="text-secondary">Only analysts and administrators can validate or escalate results.</div>
+      <div class="text-secondary">Only analysts and administrators can change the validation decision.</div>
       {% endif %}
     </div>
   </div>
