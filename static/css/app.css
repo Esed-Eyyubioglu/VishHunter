@@ -421,7 +421,8 @@ a {
   vertical-align: middle;
 }
 
-.risk-pill {
+.risk-pill,
+.status-pill {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -433,7 +434,8 @@ a {
   letter-spacing: 0.08em;
 }
 
-.risk-pill::before {
+.risk-pill::before,
+.status-pill::before {
   content: "";
   width: 0.4rem;
   height: 0.4rem;
@@ -458,6 +460,31 @@ a {
   color: var(--danger);
   border: 1px solid rgba(255, 180, 171, 0.24);
   box-shadow: 0 0 16px rgba(255, 180, 171, 0.12);
+}
+
+.risk-pending,
+.status-queued {
+  background: rgba(173, 198, 255, 0.1);
+  color: var(--primary);
+  border: 1px solid rgba(173, 198, 255, 0.18);
+}
+
+.status-processing {
+  background: rgba(248, 201, 107, 0.12);
+  color: var(--warning);
+  border: 1px solid rgba(248, 201, 107, 0.18);
+}
+
+.status-analyzed {
+  background: rgba(94, 226, 155, 0.12);
+  color: var(--success);
+  border: 1px solid rgba(94, 226, 155, 0.18);
+}
+
+.status-failed {
+  background: rgba(255, 180, 171, 0.14);
+  color: var(--danger);
+  border: 1px solid rgba(255, 180, 171, 0.24);
 }
 
 .form-label {
@@ -757,6 +784,23 @@ a {
 }
 
 .risk-text-high {
+  color: var(--danger) !important;
+}
+
+.risk-text-pending,
+.status-text-queued {
+  color: var(--primary) !important;
+}
+
+.status-text-processing {
+  color: var(--warning) !important;
+}
+
+.status-text-analyzed {
+  color: var(--success) !important;
+}
+
+.status-text-failed {
   color: var(--danger) !important;
 }
 

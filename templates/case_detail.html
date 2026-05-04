@@ -1,5 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Case Details | VishHunter{% endblock %}
+{% block head %}
+{% if case.status in ['queued', 'processing'] %}
+<meta http-equiv="refresh" content="6" />
+{% endif %}
+{% endblock %}
 {% block page_title %}Case Details and Results{% endblock %}
 {% block page_subtitle %}Transcript, waveform, confidence indicators, and analyst review controls{% endblock %}
 {% block content %}
@@ -11,9 +16,19 @@
           <h2>{{ case.case_number }} - {{ case.title }}</h2>
           <p>{{ case.summary }}</p>
         </div>
+        {% if case.status == 'analyzed' %}
         <a class="btn btn-primary btn-vish" href="/cases/{{ case.id }}/report.pdf"><span class="material-symbols-outlined">picture_as_pdf</span>Export PDF</a>
+        {% else %}
+        <button class="btn btn-outline-light" type="button" disabled><span class="material-symbols-outlined">hourglass_top</span>Report Pending</button>
+        {% endif %}
       </div>
+      {% if case.status in ['queued', 'processing'] %}
+      <div class="alert alert-info">Analysis is running in the background. This page refreshes automatically until results are ready.</div>
+      {% elif case.status == 'failed' %}
+      <div class="alert alert-danger">Analysis failed. Review the summary and audit log, then upload the recording again if needed.</div>
+      {% endif %}
       <div class="row g-3 mb-4">
+        <div class="col-md-3"><div class="metric-tile"><span>Analysis Stage</span><strong class="status-text-{{ case.status }}">{{ case.status.replace('_', ' ')|upper }}</strong></div></div>
         <div class="col-md-3"><div class="metric-tile"><span>Risk Level</span><strong class="risk-text-{{ case.risk_level }}">{{ case.risk_level|upper }}</strong></div></div>
         <div class="col-md-3"><div class="metric-tile"><span>Confidence</span><strong>{{ (case.confidence_score * 100)|round|int }}%</strong></div></div>
         <div class="col-md-3"><div class="metric-tile"><span>Audio Score</span><strong>{{ (case.audio_score * 100)|round|int }}%</strong></div></div>
@@ -22,7 +37,7 @@
       <div class="row g-4">
         <div class="col-12">
           <div class="section-label">Transcript</div>
-          <div class="transcript-box">{{ transcript }}</div>
+          <div class="transcript-box">{{ transcript if transcript else "Transcript will appear here after background analysis finishes." }}</div>
         </div>
         <div class="col-12">
           <div class="section-label">Audio Waveform</div>
@@ -101,7 +116,7 @@
           <p>Junior analyst confirmation workflow</p>
         </div>
       </div>
-      {% if user.role in ['analyst', 'administrator'] %}
+      {% if user.role in ['analyst', 'administrator'] and case.status == 'analyzed' %}
       <form method="post" action="/cases/{{ case.id }}/review" class="d-grid gap-3">
         <select class="form-select form-control-dark" name="review_status">
           <option value="pending" {% if case.review_status == 'pending' %}selected{% endif %}>Pending</option>
@@ -112,6 +127,8 @@
         <textarea class="form-control form-control-dark" rows="5" name="review_notes" placeholder="Analyst review notes">{{ case.review_notes or "" }}</textarea>
         <button class="btn btn-primary btn-vish" type="submit"><span class="material-symbols-outlined">fact_check</span>Save Review</button>
       </form>
+      {% elif case.status != 'analyzed' %}
+      <div class="text-secondary">Review controls unlock after the background analysis finishes.</div>
       {% else %}
       <div class="text-secondary">Only analysts and administrators can validate or escalate results.</div>
       {% endif %}

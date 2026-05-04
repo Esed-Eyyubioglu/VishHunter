@@ -72,26 +72,21 @@ def create_case_from_upload(
     assigned_to: User,
 ) -> Case:
     storage_path, file_size = save_upload(file)
-    try:
-        processed = pipeline.analyze(storage_path)
-    except Exception:
-        Path(storage_path).unlink(missing_ok=True)
-        raise
     case = Case(
         case_number=next_case_number(db),
         title=(file.filename or "Uploaded call recording").rsplit(".", 1)[0].replace("-", " ").title(),
         uploaded_by=uploaded_by.id,
         assigned_to=assigned_to.id,
-        status="analyzed",
-        risk_level=processed.risk_level,
-        audio_score=processed.audio_score,
-        text_score=processed.text_score,
-        risk_score=processed.risk_score,
-        confidence_score=processed.confidence,
-        model_verdict=processed.verdict,
-        indicators=processed.indicators,
-        summary=processed.summary,
-        review_status="pending",
+        status="queued",
+        risk_level="pending",
+        audio_score=0.0,
+        text_score=0.0,
+        risk_score=0.0,
+        confidence_score=0.0,
+        model_verdict="pending",
+        indicators=["Analysis queued"],
+        summary="The recording was uploaded successfully and is waiting for background analysis.",
+        review_status="analysis_pending",
     )
     db.add(case)
     db.flush()
@@ -101,34 +96,94 @@ def create_case_from_upload(
             case_id=case.id,
             original_filename=file.filename or "audio.wav",
             storage_path=storage_path,
-            file_hash=processed.file_hash,
+            file_hash="",
             format=(Path(file.filename or "audio.wav").suffix or ".wav").replace(".", "").lower(),
             mime_type=file.content_type or "audio/wav",
-            duration_seconds=processed.duration_seconds,
+            duration_seconds=0.0,
             file_size_bytes=file_size,
         )
     )
-    db.add(Transcription(case_id=case.id, encrypted_text=encrypt_text(processed.transcript), detected_language="en"))
-    db.add(
-        AudioFeatureSet(
-            case_id=case.id,
-            mfcc_vector=processed.mfcc_vector,
-            spectral_contrast=processed.spectral_vector,
-            zcr=processed.zcr,
-            pitch_profile=processed.pitch_profile,
-            anomalies=processed.anomalies,
-        )
-    )
-    db.add(
-        TextFeatureSet(
-            case_id=case.id,
-            embedding_vector=processed.embedding_vector,
-            indicators=processed.indicators,
-            suspicious_phrases=processed.suspicious_phrases,
-        )
-    )
-    log_event(db, uploaded_by, "case.upload", f"{case.case_number} uploaded, analyzed, and assigned to {assigned_to.email}")
+    log_event(db, uploaded_by, "case.upload", f"{case.case_number} uploaded and assigned to {assigned_to.email}")
     return case
+
+
+def process_case_analysis(db: Session, case_id: str) -> None:
+    case = get_case_detail(db, case_id)
+    if not case or not case.audio_record:
+        return
+
+    case.status = "processing"
+    case.summary = "Background analysis is running: transcription, acoustic extraction, linguistic scoring, and fusion."
+    case.indicators = ["Analysis in progress"]
+    log_event(db, None, "case.analysis.start", f"{case.case_number} background analysis started")
+    db.commit()
+
+    try:
+        audio_path = Path(case.audio_record.storage_path)
+        if not audio_path.exists():
+            raise FileNotFoundError("Stored audio file is missing.")
+        processed = pipeline.analyze(str(audio_path))
+        case.status = "analyzed"
+        case.risk_level = processed.risk_level
+        case.audio_score = processed.audio_score
+        case.text_score = processed.text_score
+        case.risk_score = processed.risk_score
+        case.confidence_score = processed.confidence
+        case.model_verdict = processed.verdict
+        case.indicators = processed.indicators
+        case.summary = processed.summary
+        case.review_status = "pending"
+        case.audio_record.file_hash = processed.file_hash
+        case.audio_record.duration_seconds = processed.duration_seconds
+        if case.transcription:
+            case.transcription.encrypted_text = encrypt_text(processed.transcript)
+            case.transcription.detected_language = "en"
+        else:
+            db.add(Transcription(case_id=case.id, encrypted_text=encrypt_text(processed.transcript), detected_language="en"))
+        if case.audio_features:
+            case.audio_features.mfcc_vector = processed.mfcc_vector
+            case.audio_features.spectral_contrast = processed.spectral_vector
+            case.audio_features.zcr = processed.zcr
+            case.audio_features.pitch_profile = processed.pitch_profile
+            case.audio_features.anomalies = processed.anomalies
+        else:
+            db.add(
+                AudioFeatureSet(
+                    case_id=case.id,
+                    mfcc_vector=processed.mfcc_vector,
+                    spectral_contrast=processed.spectral_vector,
+                    zcr=processed.zcr,
+                    pitch_profile=processed.pitch_profile,
+                    anomalies=processed.anomalies,
+                )
+            )
+        if case.text_features:
+            case.text_features.embedding_vector = processed.embedding_vector
+            case.text_features.indicators = processed.indicators
+            case.text_features.suspicious_phrases = processed.suspicious_phrases
+        else:
+            db.add(
+                TextFeatureSet(
+                    case_id=case.id,
+                    embedding_vector=processed.embedding_vector,
+                    indicators=processed.indicators,
+                    suspicious_phrases=processed.suspicious_phrases,
+                )
+            )
+        log_event(db, None, "case.analysis.complete", f"{case.case_number} background analysis completed")
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        failed_case = get_case_detail(db, case_id)
+        if failed_case:
+            failed_case.status = "failed"
+            failed_case.risk_level = "pending"
+            failed_case.model_verdict = "failed"
+            failed_case.review_status = "analysis_failed"
+            failed_case.indicators = ["Analysis failed"]
+            failed_case.summary = f"Background analysis failed: {exc}"
+            log_event(db, None, "case.analysis.failed", f"{failed_case.case_number} background analysis failed: {exc}")
+            db.commit()
 
 
 def get_case_detail(db: Session, case_id: str) -> Case | None:

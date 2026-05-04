@@ -72,6 +72,7 @@
           <th>Title</th>
           <th>Risk Level</th>
           <th>Confidence</th>
+          <th>Analysis Stage</th>
           <th>Review Status</th>
           <th></th>
         </tr>
@@ -83,6 +84,7 @@
           <td>{{ case.title }}</td>
           <td><span class="risk-pill risk-{{ case.risk_level }}">{{ case.risk_level|upper }}</span></td>
           <td>{{ (case.confidence_score * 100)|round|int }}%</td>
+          <td><span class="status-pill status-{{ case.status }}">{{ case.status.replace('_', ' ').title() }}</span></td>
           <td>{{ case.review_status.replace('_', ' ').title() }}</td>
           <td class="text-end"><a class="btn btn-sm btn-outline-light" href="/cases/{{ case.id }}">View Details</a></td>
         </tr>

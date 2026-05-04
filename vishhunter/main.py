@@ -4,7 +4,7 @@ from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -34,6 +34,7 @@ from .services import (
     get_case_detail,
     log_event,
     monthly_case_volume,
+    process_case_analysis,
     reprocess_existing_cases,
     update_system_settings,
     user_rows,
@@ -57,6 +58,14 @@ def role_label(role: str) -> str:
 
 
 templates.env.filters["role_label"] = role_label
+
+
+def run_case_analysis(case_id: str) -> None:
+    db = SessionLocal()
+    try:
+        process_case_analysis(db, case_id)
+    finally:
+        db.close()
 
 
 @app.on_event("startup")
@@ -224,6 +233,7 @@ def upload_page(
 @app.post("/upload")
 def upload_submit(
     request: Request,
+    background_tasks: BackgroundTasks,
     audio_file: UploadFile = File(...),
     assigned_analyst_id: str = Form(...),
     user: User = Depends(require_role("technician", "administrator")),
@@ -276,6 +286,7 @@ def upload_submit(
             status_code=status.HTTP_400_BAD_REQUEST,
         )
     db.commit()
+    background_tasks.add_task(run_case_analysis, case.id)
     return RedirectResponse(f"/cases/{case.id}", status_code=status.HTTP_302_FOUND)
 
 
@@ -364,7 +375,7 @@ def validation_page(
     user: User = Depends(require_role("analyst", "administrator")),
     db: Session = Depends(get_db),
 ) -> Response:
-    pending_cases = [case for case in case_rows(db) if case.review_status == "pending"]
+    pending_cases = [case for case in case_rows(db) if case.status == "analyzed" and case.review_status == "pending"]
     if user.role == "analyst":
         pending_cases = [case for case in pending_cases if case.assigned_to == user.id]
     return templates.TemplateResponse("validation.html", common_context(request, user=user, cases=pending_cases))
@@ -557,6 +568,8 @@ def export_case_report(case_id: str, user: User = Depends(require_user), db: Ses
     case = get_case_detail(db, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Case not found")
+    if case.status != "analyzed":
+        raise HTTPException(status_code=400, detail="Case analysis is not complete yet")
 
     transcript = decrypted_transcript(case)
     buffer = BytesIO()

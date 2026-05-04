@@ -16,9 +16,18 @@
       <option value="medium">Medium Risk</option>
       <option value="low">Low Risk</option>
     </select>
-    <select id="statusFilter" class="case-filter-select" aria-label="Filter by status">
-      <option value="all">All Statuses</option>
-      <option value="pending">Pending</option>
+    <select id="statusFilter" class="case-filter-select" aria-label="Filter by analysis stage">
+      <option value="all">All Stages</option>
+      <option value="queued">Queued</option>
+      <option value="processing">Processing</option>
+      <option value="analyzed">Analyzed</option>
+      <option value="failed">Failed</option>
+    </select>
+    <select id="reviewFilter" class="case-filter-select" aria-label="Filter by review status">
+      <option value="all">All Reviews</option>
+      <option value="analysis_pending">Analysis Pending</option>
+      <option value="analysis_failed">Analysis Failed</option>
+      <option value="pending">Pending Review</option>
       <option value="validated_safe">Validated Safe</option>
       <option value="escalated_to_sirt">Escalated To SIRT</option>
       <option value="closed">Closed</option>
@@ -44,7 +53,8 @@
           <th>Title</th>
           <th>Risk</th>
           <th>Confidence</th>
-          <th>Status</th>
+          <th>Analysis Stage</th>
+          <th>Review Status</th>
           <th>Assigned Analyst</th>
           <th>Created</th>
           <th></th>
@@ -52,11 +62,12 @@
       </thead>
       <tbody>
         {% for case in cases %}
-        <tr class="case-row" data-search="{{ (case.case_number ~ ' ' ~ case.title ~ ' ' ~ (case.assigned_to_user.full_name if case.assigned_to_user else 'Unassigned'))|lower }}" data-risk="{{ case.risk_level }}" data-status="{{ case.review_status }}">
+        <tr class="case-row" data-search="{{ (case.case_number ~ ' ' ~ case.title ~ ' ' ~ (case.assigned_to_user.full_name if case.assigned_to_user else 'Unassigned'))|lower }}" data-risk="{{ case.risk_level }}" data-status="{{ case.status }}" data-review="{{ case.review_status }}">
           <td>{{ case.case_number }}</td>
           <td>{{ case.title }}</td>
           <td><span class="risk-pill risk-{{ case.risk_level }}">{{ case.risk_level|upper }}</span></td>
           <td>{{ (case.confidence_score * 100)|round|int }}%</td>
+          <td><span class="status-pill status-{{ case.status }}">{{ case.status.replace('_', ' ').title() }}</span></td>
           <td>{{ case.review_status.replace('_', ' ').title() }}</td>
           <td>{{ case.assigned_to_user.full_name if case.assigned_to_user else "Unassigned" }}</td>
           <td>{{ case.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
@@ -64,7 +75,7 @@
         </tr>
         {% endfor %}
         <tr id="caseFilterEmpty" class="d-none">
-          <td colspan="8" class="text-center text-secondary py-4">No cases match the current filters.</td>
+          <td colspan="9" class="text-center text-secondary py-4">No cases match the current filters.</td>
         </tr>
       </tbody>
     </table>
@@ -78,11 +89,12 @@
   const search = document.getElementById("caseSearch");
   const risk = document.getElementById("riskFilter");
   const status = document.getElementById("statusFilter");
+  const review = document.getElementById("reviewFilter");
   const reset = document.getElementById("caseFilterReset");
   const rows = Array.from(document.querySelectorAll(".case-row"));
   const empty = document.getElementById("caseFilterEmpty");
 
-  if (!search || !risk || !status || !reset) {
+  if (!search || !risk || !status || !review || !reset) {
     return;
   }
 
@@ -90,13 +102,15 @@
     const query = search.value.trim().toLowerCase();
     const riskValue = risk.value;
     const statusValue = status.value;
+    const reviewValue = review.value;
     let visibleRows = 0;
 
     rows.forEach((row) => {
       const matchesSearch = !query || row.dataset.search.includes(query);
       const matchesRisk = riskValue === "all" || row.dataset.risk === riskValue;
       const matchesStatus = statusValue === "all" || row.dataset.status === statusValue;
-      const shouldShow = matchesSearch && matchesRisk && matchesStatus;
+      const matchesReview = reviewValue === "all" || row.dataset.review === reviewValue;
+      const shouldShow = matchesSearch && matchesRisk && matchesStatus && matchesReview;
 
       row.classList.toggle("d-none", !shouldShow);
       if (shouldShow) {
@@ -112,10 +126,12 @@
   search.addEventListener("input", applyFilters);
   risk.addEventListener("change", applyFilters);
   status.addEventListener("change", applyFilters);
+  review.addEventListener("change", applyFilters);
   reset.addEventListener("click", () => {
     search.value = "";
     risk.value = "all";
     status.value = "all";
+    review.value = "all";
     applyFilters();
   });
 })();
