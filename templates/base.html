@@ -30,6 +30,7 @@
           <a class="nav-link {% if active_path == '/upload' %}active{% endif %}" href="/upload"><span class="material-symbols-outlined">cloud_upload</span>Upload & Analyze</a>
           {% endif %}
           <a class="nav-link {% if active_path == '/cases' or active_path.startswith('/cases/') %}active{% endif %}" href="/cases"><span class="material-symbols-outlined">history</span>Case History</a>
+          <a class="nav-link {% if active_path == '/notifications' %}active{% endif %}" href="/notifications"><span class="material-symbols-outlined">notifications</span>Notifications{% if unread_notifications %}<span class="nav-badge">{{ unread_notifications }}</span>{% endif %}</a>
           <a class="nav-link {% if active_path == '/reports' %}active{% endif %}" href="/reports"><span class="material-symbols-outlined">query_stats</span>Reports & Analytics</a>
           {% if user.role in ['analyst', 'administrator'] %}
           <a class="nav-link {% if active_path == '/validation' %}active{% endif %}" href="/validation"><span class="material-symbols-outlined">fact_check</span>Review & Validation</a>
@@ -57,6 +58,37 @@
           <div class="d-flex align-items-center gap-3">
             <span class="status-dot"></span>
             <span class="system-state">Monitoring Active</span>
+            <div class="dropdown notification-menu">
+              <button class="notification-trigger" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Open notifications">
+                <span class="material-symbols-outlined">notifications</span>
+                {% if unread_notifications %}
+                <span class="notification-count">{{ unread_notifications }}</span>
+                {% endif %}
+              </button>
+              <div class="dropdown-menu dropdown-menu-end notification-dropdown">
+                <div class="notification-dropdown-header">
+                  <div>
+                    <strong>Notifications</strong>
+                    <span>{{ unread_notifications }} unread</span>
+                  </div>
+                  <a href="/notifications">View all</a>
+                </div>
+                {% if notification_preview %}
+                  {% for notification in notification_preview %}
+                  <a class="notification-item {% if not notification.is_read %}unread{% endif %}" href="{{ '/cases/' ~ notification.case_id if notification.case_id else '/notifications' }}">
+                    <span class="notification-severity severity-{{ notification.severity }}"></span>
+                    <span>
+                      <strong>{{ notification.title }}</strong>
+                      <small>{{ notification.message }}</small>
+                      <em>{{ notification.created_at.strftime("%Y-%m-%d %H:%M") }}</em>
+                    </span>
+                  </a>
+                  {% endfor %}
+                {% else %}
+                  <div class="notification-empty">No notifications yet.</div>
+                {% endif %}
+              </div>
+            </div>
             <a href="/logout" class="btn btn-sm btn-outline-light"><span class="material-symbols-outlined">logout</span>Sign out</a>
           </div>
         </header>
@@ -65,12 +97,22 @@
         </section>
       </main>
     </div>
+    <div id="notificationToastStack" class="notification-toast-stack" aria-live="polite" aria-atomic="false"></div>
     {% else %}
     {% block auth_content %}{% endblock %}
     {% endif %}
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
     <script src="https://unpkg.com/wavesurfer.js@7/dist/wavesurfer.min.js"></script>
+    {% if user %}
+    <script>
+      window.vishhunterNotificationConfig = {
+        pollUrl: "/notifications/poll",
+        userId: {{ user.id | tojson }},
+        initialIds: {{ notification_preview | map(attribute='id') | list | tojson }}
+      }
+    </script>
+    {% endif %}
     <script src="{{ request.url_for('static', path='js/app.js') }}"></script>
     {% block scripts %}{% endblock %}
   </body>

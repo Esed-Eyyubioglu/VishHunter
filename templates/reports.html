@@ -3,27 +3,31 @@
 {% block page_title %}Reports & Analytics{% endblock %}
 {% block page_subtitle %}Detection summaries, trend charts, and export-ready oversight{% endblock %}
 {% block content %}
-<div class="row g-4 mb-4">
-  <div class="col-lg-7">
-    <div class="panel-card">
+<div class="row g-4 mb-4 report-chart-row">
+  <div class="col-lg-7 col-xl-8">
+    <div class="panel-card report-chart-card">
       <div class="panel-header">
         <div>
           <h2>Monthly Case Volume</h2>
           <p>Graphical representation of detection results and trends</p>
         </div>
       </div>
-      <canvas id="monthlyChart" height="260"></canvas>
+      <div class="report-chart-box report-chart-box-bar">
+        <canvas id="monthlyChart"></canvas>
+      </div>
     </div>
   </div>
-  <div class="col-lg-5">
-    <div class="panel-card">
+  <div class="col-lg-5 col-xl-4">
+    <div class="panel-card report-chart-card">
       <div class="panel-header">
         <div>
           <h2>Risk Summary</h2>
           <p>Current distribution across stored cases</p>
         </div>
       </div>
-      <canvas id="reportRiskChart" height="260"></canvas>
+      <div class="report-chart-box report-chart-box-doughnut">
+        <canvas id="reportRiskChart"></canvas>
+      </div>
     </div>
   </div>
 </div>
@@ -31,6 +35,63 @@
   <div class="col-md-4"><div class="panel-card stat-card"><div class="text-secondary small">Average Confidence</div><div class="display-value">{{ metrics.avg_confidence }}%</div></div></div>
   <div class="col-md-4"><div class="panel-card stat-card"><div class="text-secondary small">Review Queue</div><div class="display-value">{{ metrics.pending_reviews }}</div></div></div>
   <div class="col-md-4"><div class="panel-card stat-card"><div class="text-secondary small">PDF Export</div><div class="display-value">Enabled</div></div></div>
+</div>
+<div class="row g-4 mt-1">
+  <div class="col-12">
+    <div class="panel-card">
+      <div class="panel-header">
+        <div>
+          <h2>Recent Reports</h2>
+          <p>Latest analyzed and queued case records with export-ready reports</p>
+        </div>
+        <div class="report-table-actions">
+          <form method="get" action="/reports" class="report-sort-form">
+            <label class="visually-hidden" for="reportSort">Sort reports</label>
+            <select id="reportSort" name="sort" class="form-select form-control-dark form-select-sm" onchange="this.form.submit()">
+              <option value="time_desc" {% if report_sort == "time_desc" %}selected{% endif %}>Newest First</option>
+              <option value="time_asc" {% if report_sort == "time_asc" %}selected{% endif %}>Oldest First</option>
+              <option value="risk_desc" {% if report_sort == "risk_desc" %}selected{% endif %}>Risk High to Low</option>
+              <option value="risk_asc" {% if report_sort == "risk_asc" %}selected{% endif %}>Risk Low to High</option>
+            </select>
+          </form>
+          <a class="btn btn-sm btn-outline-light" href="/cases">Open History</a>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-dark table-hover align-middle mb-0 compact-dashboard-table">
+          <thead>
+            <tr>
+              <th>Case ID</th>
+              <th>Risk</th>
+              <th>Created</th>
+              <th>Assigned Analyst</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for case in recent_cases %}
+            <tr>
+              <td>{{ case.case_number }}</td>
+              <td><span class="risk-pill risk-{{ case.risk_level }}">{{ case.risk_level|upper }}</span></td>
+              <td>{{ case.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+              <td>{{ case.assigned_to_user.full_name if case.assigned_to_user else "Unassigned" }}</td>
+              <td class="text-end">
+                <a class="btn btn-sm btn-primary btn-vish" href="/cases/{{ case.id }}/report.pdf">
+                  <span class="material-symbols-outlined">picture_as_pdf</span>
+                  Export PDF
+                </a>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="5" class="text-center text-secondary py-4">No cases available for report export yet.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}
 {% block scripts %}

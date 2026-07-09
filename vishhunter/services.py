@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from .config import settings
 from .ml import pipeline
-from .models import AuditLog, AudioFeatureSet, AudioRecord, Case, TextFeatureSet, Transcription, User
+from .models import AuditLog, AudioFeatureSet, AudioRecord, Case, Notification, TextFeatureSet, Transcription, User
 from .security import decrypt_text, encrypt_text, hash_password
 from .system_settings import load_system_settings, save_system_settings
 
@@ -47,6 +47,101 @@ def create_initial_admin(db: Session, *, full_name: str, email: str, password: s
 
 def log_event(db: Session, user: User | None, action: str, details: str) -> None:
     db.add(AuditLog(user_id=user.id if user else None, action=action, details=details))
+
+
+def active_admin_rows(db: Session) -> list[User]:
+    return db.scalars(
+        select(User)
+        .where(User.role == "administrator", User.is_active == True)
+        .order_by(User.full_name.asc())
+    ).all()
+
+
+def create_notification(
+    db: Session,
+    *,
+    user: User,
+    title: str,
+    message: str,
+    event_type: str,
+    case: Case | None = None,
+    severity: str = "info",
+) -> Notification:
+    notification = Notification(
+        user_id=user.id,
+        case_id=case.id if case else None,
+        event_type=event_type,
+        severity=severity,
+        title=title,
+        message=message,
+    )
+    db.add(notification)
+    return notification
+
+
+def create_notifications_for_users(
+    db: Session,
+    users: list[User],
+    *,
+    title: str,
+    message: str,
+    event_type: str,
+    case: Case | None = None,
+    severity: str = "info",
+) -> None:
+    seen: set[str] = set()
+    for target in users:
+        if not target or not target.is_active or target.id in seen:
+            continue
+        seen.add(target.id)
+        create_notification(
+            db,
+            user=target,
+            title=title,
+            message=message,
+            event_type=event_type,
+            case=case,
+            severity=severity,
+        )
+
+
+def case_notification_recipients(db: Session, case: Case, *, include_admins: bool = True) -> list[User]:
+    recipients: list[User] = []
+    if case.uploaded_by_user and case.uploaded_by_user.is_active:
+        recipients.append(case.uploaded_by_user)
+    if case.assigned_to_user and case.assigned_to_user.is_active:
+        recipients.append(case.assigned_to_user)
+    if include_admins:
+        recipients.extend(active_admin_rows(db))
+    return recipients
+
+
+def notification_rows_for_user(db: Session, user: User, limit: int = 20) -> list[Notification]:
+    return db.scalars(
+        select(Notification)
+        .where(Notification.user_id == user.id)
+        .order_by(Notification.created_at.desc())
+        .limit(limit)
+    ).all()
+
+
+def unread_notification_count(db: Session, user: User) -> int:
+    return int(
+        db.scalar(
+            select(func.count())
+            .select_from(Notification)
+            .where(Notification.user_id == user.id, Notification.is_read == False)
+        )
+        or 0
+    )
+
+
+def mark_notifications_read(db: Session, user: User, notification_id: str | None = None) -> None:
+    query = select(Notification).where(Notification.user_id == user.id, Notification.is_read == False)
+    if notification_id:
+        query = query.where(Notification.id == notification_id)
+    for notification in db.scalars(query):
+        notification.is_read = True
 
 
 def next_case_number(db: Session) -> str:
@@ -104,6 +199,33 @@ def create_case_from_upload(
         )
     )
     log_event(db, uploaded_by, "case.upload", f"{case.case_number} uploaded and assigned to {assigned_to.email}")
+    create_notifications_for_users(
+        db,
+        [uploaded_by],
+        title="Case uploaded",
+        message=f"{case.case_number} was created and queued for background analysis.",
+        event_type="case.upload",
+        case=case,
+        severity="success",
+    )
+    create_notifications_for_users(
+        db,
+        [assigned_to],
+        title="New case assigned",
+        message=f"{case.case_number} was assigned to you for validation after analysis completes.",
+        event_type="case.assigned",
+        case=case,
+        severity="info",
+    )
+    create_notifications_for_users(
+        db,
+        active_admin_rows(db),
+        title="New case uploaded",
+        message=f"{case.case_number} was uploaded by {uploaded_by.full_name} and assigned to {assigned_to.full_name}.",
+        event_type="case.upload",
+        case=case,
+        severity="info",
+    )
     return case
 
 
@@ -116,6 +238,15 @@ def process_case_analysis(db: Session, case_id: str) -> None:
     case.summary = "Background analysis is running: transcription, acoustic extraction, linguistic scoring, and fusion."
     case.indicators = ["Analysis in progress"]
     log_event(db, None, "case.analysis.start", f"{case.case_number} background analysis started")
+    create_notifications_for_users(
+        db,
+        case_notification_recipients(db, case),
+        title="Analysis started",
+        message=f"{case.case_number} is now processing in the background.",
+        event_type="case.analysis.start",
+        case=case,
+        severity="info",
+    )
     db.commit()
 
     try:
@@ -171,6 +302,15 @@ def process_case_analysis(db: Session, case_id: str) -> None:
                 )
             )
         log_event(db, None, "case.analysis.complete", f"{case.case_number} background analysis completed")
+        create_notifications_for_users(
+            db,
+            case_notification_recipients(db, case),
+            title="Analysis completed",
+            message=f"{case.case_number} is ready for review with {case.risk_level.title()} risk.",
+            event_type="case.analysis.complete",
+            case=case,
+            severity="success" if case.risk_level == "low" else "warning",
+        )
         db.commit()
     except Exception as exc:
         db.rollback()
@@ -183,6 +323,15 @@ def process_case_analysis(db: Session, case_id: str) -> None:
             failed_case.indicators = ["Analysis failed"]
             failed_case.summary = f"Background analysis failed: {exc}"
             log_event(db, None, "case.analysis.failed", f"{failed_case.case_number} background analysis failed: {exc}")
+            create_notifications_for_users(
+                db,
+                case_notification_recipients(db, failed_case),
+                title="Analysis failed",
+                message=f"{failed_case.case_number} could not be analyzed. Error: {exc}",
+                event_type="case.analysis.failed",
+                case=failed_case,
+                severity="danger",
+            )
             db.commit()
 
 

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block page_title %}Notifications{% endblock %}
+{% block page_subtitle %}Internal case updates, analysis progress, and system alerts for your role{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <div class="section-kicker">Notification Center</div>
+    <h2 class="section-title mb-0">Operational updates</h2>
+  </div>
+  <form method="post" action="/notifications/read">
+    <button class="btn btn-outline-light" type="submit">
+      <span class="material-symbols-outlined">done_all</span>
+      Mark all read
+    </button>
+  </form>
+</div>
+
+<div class="notification-list">
+  {% for notification in notifications %}
+  <div class="notification-card {% if not notification.is_read %}unread{% endif %}">
+    <div class="notification-card-icon severity-{{ notification.severity }}">
+      <span class="material-symbols-outlined">
+        {% if notification.severity == 'danger' %}error{% elif notification.severity == 'warning' %}warning{% elif notification.severity == 'success' %}check_circle{% else %}info{% endif %}
+      </span>
+    </div>
+    <div class="notification-card-body">
+      <div class="notification-card-title-row">
+        <h3>{{ notification.title }}</h3>
+        <span>{{ notification.created_at.strftime("%Y-%m-%d %H:%M") }}</span>
+      </div>
+      <p>{{ notification.message }}</p>
+      <div class="notification-card-actions">
+        {% if notification.case_id %}
+        <a class="btn btn-sm btn-outline-light" href="/cases/{{ notification.case_id }}">
+          <span class="material-symbols-outlined">open_in_new</span>
+          Open case
+        </a>
+        {% endif %}
+        {% if not notification.is_read %}
+        <form method="post" action="/notifications/{{ notification.id }}/read">
+          <input type="hidden" name="next_url" value="/notifications">
+          <button class="btn btn-sm btn-ghost" type="submit">
+            <span class="material-symbols-outlined">mark_email_read</span>
+            Mark read
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="empty-panel">
+    <span class="material-symbols-outlined">notifications_off</span>
+    <h3>No notifications yet</h3>
+    <p>Case upload, assignment, analysis progress, validation, and error alerts will appear here.</p>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

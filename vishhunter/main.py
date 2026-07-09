@@ -25,6 +25,7 @@ from .services import (
     any_users_exist,
     audit_rows,
     case_rows,
+    create_notifications_for_users,
     create_case_from_upload,
     create_initial_admin,
     current_system_settings,
@@ -33,9 +34,12 @@ from .services import (
     ensure_directories,
     get_case_detail,
     log_event,
+    mark_notifications_read,
     monthly_case_volume,
+    notification_rows_for_user,
     process_case_analysis,
     reprocess_existing_cases,
+    unread_notification_count,
     update_system_settings,
     user_rows,
     weekly_case_trend,
@@ -55,6 +59,16 @@ def role_label(role: str) -> str:
         "technician": "Cybersecurity Technician",
         "analyst": "Junior Security Analyst",
     }.get(role, role.title())
+
+
+def password_policy_error(password: str) -> str | None:
+    if len(password) < 8:
+        return "Password must be at least 8 characters long."
+    if not any(character.isupper() for character in password):
+        return "Password must include at least one capital letter."
+    if not any(not character.isalnum() for character in password):
+        return "Password must include at least one symbol."
+    return None
 
 
 templates.env.filters["role_label"] = role_label
@@ -102,7 +116,21 @@ def require_role(*allowed: str):
 
 
 def common_context(request: Request, user: User | None = None, **extra: object) -> dict:
-    context = {"request": request, "user": user, "active_path": request.url.path}
+    notification_preview = []
+    unread_notifications = 0
+    if user:
+        with SessionLocal() as notification_db:
+            notification_user = notification_db.scalar(select(User).where(User.id == user.id))
+            if notification_user:
+                notification_preview = notification_rows_for_user(notification_db, notification_user, limit=8)
+                unread_notifications = unread_notification_count(notification_db, notification_user)
+    context = {
+        "request": request,
+        "user": user,
+        "active_path": request.url.path,
+        "notification_preview": notification_preview,
+        "unread_notifications": unread_notifications,
+    }
     context.update(extra)
     return context
 
@@ -204,6 +232,13 @@ def logout() -> RedirectResponse:
 def dashboard(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)) -> Response:
     metrics = dashboard_metrics(db)
     cases = case_rows(db)[:5]
+    analyst_validation_cases = []
+    if user.role == "analyst":
+        analyst_validation_cases = [
+            case
+            for case in case_rows(db)
+            if case.assigned_to == user.id and case.review_status in {"analysis_pending", "analysis_failed", "pending"}
+        ][:5]
     trend = weekly_case_trend(db)
     return templates.TemplateResponse(
         "dashboard.html",
@@ -212,6 +247,8 @@ def dashboard(request: Request, user: User = Depends(require_user), db: Session 
             user=user,
             metrics=metrics,
             recent_cases=cases,
+            recent_alerts=notification_rows_for_user(db, user, limit=5),
+            analyst_validation_cases=analyst_validation_cases,
             trend_labels=trend["labels"],
             trend_values=trend["values"],
         ),
@@ -329,6 +366,25 @@ def assign_case(
         raise HTTPException(status_code=400, detail="Choose an active junior security analyst.")
     case.assigned_to = analyst.id
     log_event(db, user, "case.assign", f"{case.case_number} assigned to {analyst.email}")
+    create_notifications_for_users(
+        db,
+        [analyst],
+        title="Case assigned to you",
+        message=f"{case.case_number} is now assigned to you for analyst review.",
+        event_type="case.assigned",
+        case=case,
+        severity="info",
+    )
+    if case.uploaded_by_user:
+        create_notifications_for_users(
+            db,
+            [case.uploaded_by_user],
+            title="Case assignment updated",
+            message=f"{case.case_number} was assigned to {analyst.full_name}.",
+            event_type="case.assign.updated",
+            case=case,
+            severity="info",
+        )
     db.commit()
     return RedirectResponse(f"/cases/{case_id}", status_code=status.HTTP_302_FOUND)
 
@@ -352,14 +408,96 @@ def review_case(
     case.review_notes = review_notes
     case.validated_at = datetime.utcnow()
     log_event(db, user, "case.review", f"{case.case_number} marked as {review_status}")
+    review_label = review_status.replace("_", " ").title()
+    if case.uploaded_by_user:
+        create_notifications_for_users(
+            db,
+            [case.uploaded_by_user],
+            title="Case validation updated",
+            message=f"{case.case_number} was marked as {review_label} by {user.full_name}.",
+            event_type="case.review",
+            case=case,
+            severity="success",
+        )
+    if case.assigned_to_user:
+        create_notifications_for_users(
+            db,
+            [case.assigned_to_user],
+            title="Validation saved",
+            message=f"Your validation for {case.case_number} was saved as {review_label}.",
+            event_type="case.review.saved",
+            case=case,
+            severity="success",
+        )
     db.commit()
     return RedirectResponse(f"/cases/{case_id}", status_code=status.HTTP_302_FOUND)
 
 
+@app.get("/notifications")
+def notifications_page(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)) -> Response:
+    return templates.TemplateResponse(
+        "notifications.html",
+        common_context(request, user=user, notifications=notification_rows_for_user(db, user, limit=100)),
+    )
+
+
+@app.get("/notifications/poll")
+def poll_notifications(user: User = Depends(require_user), db: Session = Depends(get_db)) -> dict:
+    notifications = [notification for notification in notification_rows_for_user(db, user, limit=8) if not notification.is_read]
+    return {
+        "unread_count": unread_notification_count(db, user),
+        "notifications": [
+            {
+                "id": notification.id,
+                "title": notification.title,
+                "message": notification.message,
+                "severity": notification.severity,
+                "created_at": notification.created_at.strftime("%Y-%m-%d %H:%M"),
+                "url": f"/cases/{notification.case_id}" if notification.case_id else "/notifications",
+            }
+            for notification in notifications
+        ],
+    }
+
+
+@app.post("/notifications/read")
+def mark_all_notifications_read(user: User = Depends(require_user), db: Session = Depends(get_db)) -> RedirectResponse:
+    mark_notifications_read(db, user)
+    db.commit()
+    return RedirectResponse("/notifications", status_code=status.HTTP_302_FOUND)
+
+
+@app.post("/notifications/{notification_id}/read")
+def mark_notification_read(
+    notification_id: str,
+    next_url: str = Form(default="/notifications"),
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    mark_notifications_read(db, user, notification_id)
+    db.commit()
+    return RedirectResponse(next_url or "/notifications", status_code=status.HTTP_302_FOUND)
+
+
 @app.get("/reports")
-def reports_page(request: Request, user: User = Depends(require_user), db: Session = Depends(get_db)) -> Response:
+def reports_page(
+    request: Request,
+    sort: str = "time_desc",
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> Response:
     metrics = dashboard_metrics(db)
     monthly = monthly_case_volume(db)
+    cases = case_rows(db)
+    risk_order = {"high": 3, "medium": 2, "low": 1, "pending": 0}
+    if sort == "time_asc":
+        cases = sorted(cases, key=lambda case: case.created_at)
+    elif sort == "risk_desc":
+        cases = sorted(cases, key=lambda case: (risk_order.get(case.risk_level, 0), case.created_at), reverse=True)
+    elif sort == "risk_asc":
+        cases = sorted(cases, key=lambda case: (risk_order.get(case.risk_level, 0), case.created_at))
+    else:
+        sort = "time_desc"
     return templates.TemplateResponse(
         "reports.html",
         common_context(
@@ -369,6 +507,8 @@ def reports_page(request: Request, user: User = Depends(require_user), db: Sessi
             risk_counts=metrics["distribution"],
             monthly_labels=monthly["labels"],
             monthly_totals=monthly["values"],
+            recent_cases=cases[:8],
+            report_sort=sort,
         ),
     )
 
@@ -400,6 +540,13 @@ def create_user(
     user: User = Depends(require_role("administrator")),
     db: Session = Depends(get_db),
 ) -> Response:
+    password_error = password_policy_error(password)
+    if password_error:
+        return templates.TemplateResponse(
+            "users.html",
+            common_context(request, user=user, users=user_rows(db), error=password_error),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
     if db.scalar(select(User).where(User.email == email)):
         return templates.TemplateResponse(
             "users.html",
@@ -608,7 +755,7 @@ def export_case_report(case_id: str, user: User = Depends(require_user), db: Ses
     doc.build(story)
     buffer.seek(0)
     filename = f"{case.case_number.lower()}-report.pdf"
-    return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+    return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{filename}"'})
 
 
 @app.get("/api/dashboard-metrics")

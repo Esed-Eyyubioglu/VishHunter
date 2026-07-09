@@ -80,7 +80,10 @@
           <option value="technician">Cybersecurity Technician</option>
           <option value="analyst">Junior Security Analyst</option>
         </select>
-        <input class="form-control form-control-dark" type="password" name="password" placeholder="Temporary password" required />
+        <input class="form-control form-control-dark" type="password" name="password" placeholder="Temporary password" minlength="8" pattern="^(?=.*[A-Z])(?=.*[^A-Za-z0-9]).{8,}$" title="Use at least 8 characters, one capital letter, and one symbol." required />
+        <div class="password-policy-hint">
+          Password must contain at least 8 characters, one capital letter, and one symbol.
+        </div>
         <button class="btn btn-primary btn-vish" type="submit">Add User</button>
       </form>
     </div>
