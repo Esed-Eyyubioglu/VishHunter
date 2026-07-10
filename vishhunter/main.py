@@ -71,6 +71,56 @@ def password_policy_error(password: str) -> str | None:
     return None
 
 
+def format_duration(seconds: float) -> str:
+    seconds = max(0, int(round(seconds)))
+    if seconds < 1:
+        return "<1 sec"
+    if seconds < 60:
+        return f"{seconds} sec"
+    minutes, remaining_seconds = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes} min {remaining_seconds} sec" if remaining_seconds else f"{minutes} min"
+    hours, remaining_minutes = divmod(minutes, 60)
+    return f"{hours} hr {remaining_minutes} min" if remaining_minutes else f"{hours} hr"
+
+
+def analysis_duration_label(case: Case) -> str:
+    if not case.created_at:
+        return "Not available"
+    artifact_times = [
+        case.transcription.generated_at if case.transcription else None,
+        case.audio_features.created_at if case.audio_features else None,
+        case.text_features.created_at if case.text_features else None,
+    ]
+    completed_times = [timestamp for timestamp in artifact_times if timestamp]
+    if case.status == "analyzed" and completed_times:
+        finished_at = max(completed_times)
+    elif case.status in {"failed", "analyzed"} and case.updated_at:
+        finished_at = case.updated_at
+    else:
+        finished_at = datetime.utcnow()
+    return format_duration((finished_at - case.created_at).total_seconds())
+
+
+def average_analysis_duration_label(cases: list[Case]) -> str:
+    durations = []
+    for case in cases:
+        if case.status != "analyzed" or not case.created_at:
+            continue
+        artifact_times = [
+            case.transcription.generated_at if case.transcription else None,
+            case.audio_features.created_at if case.audio_features else None,
+            case.text_features.created_at if case.text_features else None,
+        ]
+        completed_times = [timestamp for timestamp in artifact_times if timestamp]
+        finished_at = max(completed_times) if completed_times else case.updated_at
+        if finished_at:
+            durations.append((finished_at - case.created_at).total_seconds())
+    if not durations:
+        return "N/A"
+    return format_duration(sum(durations) / len(durations))
+
+
 templates.env.filters["role_label"] = role_label
 
 
@@ -341,7 +391,15 @@ def case_detail_page(request: Request, case_id: str, user: User = Depends(requir
     audio_url = f"/uploads/{Path(case.audio_record.storage_path).name}" if case.audio_record and case.audio_record.storage_path else None
     return templates.TemplateResponse(
         "case_detail.html",
-        common_context(request, user=user, case=case, transcript=transcript, audio_url=audio_url, analysts=active_analyst_rows(db)),
+        common_context(
+            request,
+            user=user,
+            case=case,
+            transcript=transcript,
+            audio_url=audio_url,
+            analysts=active_analyst_rows(db),
+            analysis_duration=analysis_duration_label(case),
+        ),
     )
 
 
@@ -509,6 +567,7 @@ def reports_page(
             monthly_totals=monthly["values"],
             recent_cases=cases[:8],
             report_sort=sort,
+            average_analysis_time=average_analysis_duration_label(cases),
         ),
     )
 
