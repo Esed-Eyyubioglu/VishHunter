@@ -62,7 +62,7 @@
       {% endif %}
       {% if model_status.metadata and model_status.metadata.validation_metrics %}
       <div class="mt-4">
-        <div class="small text-secondary mb-2">Cross-validated fusion metrics</div>
+        <div class="small text-secondary mb-2">Cross-validated weighted fusion scoring metrics</div>
         <ul class="settings-list">
           <li>AUC: {{ model_status.metadata.validation_metrics.fusion_branch.auc }}</li>
           <li>Precision: {{ model_status.metadata.validation_metrics.fusion_branch.precision }}</li>

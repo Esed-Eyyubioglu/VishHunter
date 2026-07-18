@@ -235,7 +235,7 @@ def process_case_analysis(db: Session, case_id: str) -> None:
         return
 
     case.status = "processing"
-    case.summary = "Background analysis is running: transcription, acoustic extraction, linguistic scoring, and fusion."
+    case.summary = "Background analysis is running: transcription, acoustic extraction, linguistic scoring, and weighted fusion scoring."
     case.indicators = ["Analysis in progress"]
     log_event(db, None, "case.analysis.start", f"{case.case_number} background analysis started")
     create_notifications_for_users(

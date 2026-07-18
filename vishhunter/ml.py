@@ -15,7 +15,6 @@ import soundfile as sf
 import torch
 from sklearn.base import clone
 from faster_whisper import WhisperModel
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import confusion_matrix, f1_score, precision_score, recall_score, roc_auc_score
 from sklearn.model_selection import StratifiedKFold, cross_val_predict
 from sklearn.svm import SVC
@@ -63,12 +62,10 @@ class HybridPipeline:
         self._whisper = None
         self._audio_model = None
         self._text_model = None
-        self._fusion_model = None
         self.artifact_dir = settings.artifact_dir
         self.artifact_dir.mkdir(parents=True, exist_ok=True)
         self.audio_model_path = self.artifact_dir / "audio_xgb.joblib"
         self.text_model_path = self.artifact_dir / "text_svm.joblib"
-        self.fusion_model_path = self.artifact_dir / "fusion_logreg.joblib"
         self.metadata_path = self.artifact_dir / "training_metadata.json"
 
     def model_status(self) -> dict:
@@ -76,7 +73,7 @@ class HybridPipeline:
         return {
             "artifacts_present": all(
                 path.exists()
-                for path in (self.audio_model_path, self.text_model_path, self.fusion_model_path)
+                for path in (self.audio_model_path, self.text_model_path)
             ),
             "metadata": self._load_metadata(),
             "settings": conf,
@@ -94,12 +91,11 @@ class HybridPipeline:
 
     def ensure_models(self) -> None:
         with self._lock:
-            if self._audio_model and self._text_model and self._fusion_model:
+            if self._audio_model and self._text_model:
                 return
-            if self.audio_model_path.exists() and self.text_model_path.exists() and self.fusion_model_path.exists():
+            if self.audio_model_path.exists() and self.text_model_path.exists():
                 self._audio_model = joblib.load(self.audio_model_path)
                 self._text_model = joblib.load(self.text_model_path)
-                self._fusion_model = joblib.load(self.fusion_model_path)
                 return
             self.train_from_public_datasets(force_retrain=True)
 
@@ -109,12 +105,10 @@ class HybridPipeline:
                 not force_retrain
                 and self.audio_model_path.exists()
                 and self.text_model_path.exists()
-                and self.fusion_model_path.exists()
             ):
                 if self._audio_model is None:
                     self._audio_model = joblib.load(self.audio_model_path)
                     self._text_model = joblib.load(self.text_model_path)
-                    self._fusion_model = joblib.load(self.fusion_model_path)
                 return self._load_metadata()
 
             self._ensure_text_encoder()
@@ -178,26 +172,20 @@ class HybridPipeline:
                 cv=text_cv,
                 method="predict_proba",
             )[:, 1]
-            fusion_features = np.column_stack([audio_probs, text_probs_audio, np.abs(audio_probs - text_probs_audio)])
-            fusion_model = LogisticRegression(random_state=42, max_iter=400, class_weight="balanced")
-            fusion_probs = cross_val_predict(
-                clone(fusion_model),
-                fusion_features,
-                audio_labels_np,
-                cv=audio_cv,
-                method="predict_proba",
-            )[:, 1]
+            weighted_fusion_probs = []
+            for audio_prob, text_prob, (_, transcript, _) in zip(audio_probs, text_probs_audio, audio_examples):
+                rule_score, _, suspicious_phrases, benign_markers = linguistic_signal_score(transcript)
+                effective_audio_score = adjust_audio_score(audio_prob, suspicious_phrases, benign_markers)
+                weighted_fusion_probs.append(weighted_fusion_score(effective_audio_score, text_prob, rule_score))
+            weighted_fusion_probs_np = np.array(weighted_fusion_probs, dtype=np.float32)
 
             audio_model.fit(audio_vectors_np, audio_labels_np)
             text_model.fit(combined_text_vectors_np, combined_text_labels_np)
-            fusion_model.fit(fusion_features, audio_labels_np)
 
             self._audio_model = audio_model
             self._text_model = text_model
-            self._fusion_model = fusion_model
             joblib.dump(audio_model, self.audio_model_path)
             joblib.dump(text_model, self.text_model_path)
-            joblib.dump(fusion_model, self.fusion_model_path)
 
             metadata = {
                 "trained_at": str(np.datetime64("now")),
@@ -219,9 +207,16 @@ class HybridPipeline:
                 "validation_metrics": {
                     "audio_branch": evaluate_probabilities(audio_labels_np, audio_probs, threshold=0.5),
                     "text_branch": evaluate_probabilities(combined_text_labels_np, text_probs_combined, threshold=0.5),
-                    "fusion_branch": evaluate_probabilities(audio_labels_np, fusion_probs, threshold=0.5),
+                    "fusion_branch": evaluate_probabilities(audio_labels_np, weighted_fusion_probs_np, threshold=0.5),
                 },
-                "recommended_thresholds": recommend_thresholds(audio_labels_np, fusion_probs),
+                "fusion_method": {
+                    "type": "weighted_fusion_scoring",
+                    "audio_weight": 0.30,
+                    "text_weight": 0.35,
+                    "rule_weight": 0.35,
+                    "description": "Deterministic weighted scoring function combining XGBoost audio, SVM text, and linguistic rule scores.",
+                },
+                "recommended_thresholds": recommend_thresholds(audio_labels_np, weighted_fusion_probs_np),
             }
             self._save_metadata(metadata)
             return metadata
@@ -312,21 +307,12 @@ class HybridPipeline:
         medium_threshold = float(current["medium_threshold"])
         rule_score, indicators, suspicious_phrases, benign_markers = linguistic_signal_score(transcript)
 
-        effective_audio_score = raw_audio_score
-        effective_text_score = (raw_text_score * 0.55) + (rule_score * 0.45)
+        effective_audio_score = adjust_audio_score(raw_audio_score, suspicious_phrases, benign_markers)
+        effective_text_score = raw_text_score
         if not suspicious_phrases:
-            if benign_markers and raw_audio_score < 0.8:
-                effective_audio_score = min(effective_audio_score, 0.45)
-            elif raw_audio_score < 0.85:
-                effective_audio_score = min(effective_audio_score, 0.6)
-            effective_text_score = min(effective_text_score, 0.4 if benign_markers else effective_text_score)
+            effective_text_score = min(raw_text_score, 0.4 if benign_markers else raw_text_score)
 
-        fusion_input = np.array(
-            [[effective_audio_score, effective_text_score, abs(effective_audio_score - effective_text_score)]],
-            dtype=np.float32,
-        )
-        model_risk_score = float(self._fusion_model.predict_proba(fusion_input)[0, 1])
-        risk_score = (model_risk_score * 0.55) + (rule_score * 0.45)
+        risk_score = weighted_fusion_score(effective_audio_score, effective_text_score, rule_score)
         if not suspicious_phrases and len(benign_markers) >= 2 and raw_audio_score < 0.8:
             risk_score = min(risk_score, 0.24)
         elif not suspicious_phrases and benign_markers and raw_audio_score < 0.8:
@@ -345,7 +331,7 @@ class HybridPipeline:
             indicators.append("Benign service-call language detected")
 
         summary = (
-            f"Hybrid fusion classified the call as {risk_level} risk with "
+            f"Weighted fusion scoring classified the call as {risk_level} risk with "
             f"{confidence:.0%} confidence using audio and linguistic signals."
         )
 
@@ -622,6 +608,24 @@ def linguistic_signal_score(transcript: str) -> tuple[float, list[str], list[str
     if not suspicious:
         score = 0.08 if not benign_markers else 0.04
     return score, indicators, suspicious, benign_markers
+
+
+def adjust_audio_score(raw_audio_score: float, suspicious_phrases: list[str], benign_markers: list[str]) -> float:
+    effective_audio_score = float(np.clip(raw_audio_score, 0.0, 1.0))
+    if not suspicious_phrases:
+        if benign_markers and raw_audio_score < 0.8:
+            effective_audio_score = min(effective_audio_score, 0.45)
+        elif raw_audio_score < 0.85:
+            effective_audio_score = min(effective_audio_score, 0.6)
+    return effective_audio_score
+
+
+def weighted_fusion_score(audio_score: float, text_score: float, rule_score: float) -> float:
+    """Combine branch outputs with fixed, transparent prototype weights."""
+    audio_component = 0.30 * float(np.clip(audio_score, 0.0, 1.0))
+    text_component = 0.35 * float(np.clip(text_score, 0.0, 1.0))
+    rule_component = 0.35 * float(np.clip(rule_score, 0.0, 1.0))
+    return float(np.clip(audio_component + text_component + rule_component, 0.0, 0.98))
 
 
 def build_stratified_cv(labels: np.ndarray) -> StratifiedKFold:

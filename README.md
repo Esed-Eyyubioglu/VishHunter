@@ -14,7 +14,7 @@ Thesis-aligned implementation of `VISHHUNTER: Voice Phishing (Vishing) Attack De
 - `Faster-Whisper` transcription
 - `Librosa` audio features
 - `DistilBERT` text embeddings
-- `XGBoost + SVM + Logistic Regression` hybrid scoring
+- `XGBoost + SVM + weighted fusion scoring` hybrid scoring
 - Audit logging
 - First-run admin setup instead of seeded demo accounts
 - Clean delivery state with no pre-created users, cases, or review records
@@ -74,7 +74,7 @@ python -m uvicorn vishhunter.main:app --reload
    - `external-data/robocall-audio-dataset`
    - `external-data/harper-valley`
 4. Click `Retrain From Public Datasets` once if you want to rebuild the model artifacts.
-5. Review the validation metrics shown in `System Settings` after retraining. The app now records cross-validated fusion metrics and recommended thresholds from the public training data.
+5. Review the validation metrics shown in `System Settings` after retraining. The app now records cross-validated weighted fusion scoring metrics and recommended thresholds from the public training data.
 6. Create one technician user and one analyst user in `User Management`.
 7. Sign out and sign in as the technician.
 8. Open `Upload & Analyze`.
